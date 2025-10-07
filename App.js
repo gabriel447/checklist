@@ -305,6 +305,8 @@ export default function App() {
         if (confirmDeleteId === currentId) {
           resetForm();
         }
+        setSaveModalMessage('Checklist deletado com sucesso.');
+        setSaveModalVisible(true);
       }
     } finally {
       setDeleteModalVisible(false);
