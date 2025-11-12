@@ -193,6 +193,11 @@ export default function App() {
     setCurrentId(null);
   };
 
+  const resetUIForNew = () => {
+    resetForm();
+    setExpanded({ cliente: true, cto: false, casa: false, interna: false, finalizacao: false });
+  };
+
   const hasChanges = useMemo(
     () => JSON.stringify(form) !== JSON.stringify(originalForm),
     [form, originalForm]
@@ -207,6 +212,8 @@ export default function App() {
         setOriginalForm(form);
         setSaveModalMessage('Checklist criado com sucesso.');
         setSaveModalVisible(true);
+        // Após criar, prepara a tela para um novo checklist
+        resetUIForNew();
       } else {
         await updateChecklist(currentId, form);
         setOriginalForm(form);
@@ -266,21 +273,23 @@ export default function App() {
         <head>
           <meta charset="utf-8" />
           <style>
-            body { font-family: -apple-system, Roboto, Arial; background:#f6f7fb; padding: 16px; }
-            .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+            @page { size: A4; margin: 10mm; }
+            body { font-family: -apple-system, Roboto, Arial; background:#f6f7fb; padding: 10px; }
+            .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
             .title { font-size:20px; font-weight:700; color:#222; }
             .meta { font-size:12px; color:#666; }
-            .card { background:#fff; border-radius:8px; padding:12px; box-shadow:0 2px 6px rgba(0,0,0,0.06); margin-bottom:12px; }
+            .card { background:#fff; border-radius:8px; padding:10px; box-shadow:0 2px 6px rgba(0,0,0,0.06); margin:12px 0; page-break-inside: avoid; break-inside: avoid; }
             .cardHeader { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
             .badge { display:inline-block; background:#e1e8ff; color:#2f6fed; font-weight:700; font-size:12px; border-radius:6px; padding:4px 8px; margin-right:8px; }
             .cardTitle { font-size:16px; font-weight:600; color:#333; }
-            .row { margin:6px 0; font-size:13px; color:#444; }
+            .row { margin:4px 0; font-size:13px; color:#444; line-height:1.35; break-inside: avoid; page-break-inside: avoid; }
             .label { font-weight:600; }
-            .figure { display:flex; flex-direction:column; align-items:flex-start; margin:8px 0; }
-            .img { width:280px; height:180px; object-fit:cover; border-radius:8px; }
-            .caption { font-size:12px; color:#666; margin-top:4px; text-align:left; }
+            .figure { display:flex; flex-direction:column; align-items:flex-start; margin:6px 0; break-inside: avoid; page-break-inside: avoid; }
+            .img { width:260px; height:160px; object-fit:cover; border-radius:8px; }
             a { color:#2f6fed; text-decoration:none; }
             .link { word-break: break-all; }
+            /* Espaçamento extra no topo da seção 4 */
+            .card4 { padding-top: 16px; }
           </style>
         </head>
         <body>
@@ -314,7 +323,7 @@ export default function App() {
             ${imgCasa ? `<div class="row"><span class="label">Foto da frente da casa</span></div><div class="figure"><img class="img" src="${imgCasa}" alt="Foto da frente da casa" /></div>` : ''}
           </div>
 
-          <div class="card">
+          <div class="card card4">
             <div class="cardHeader"><div><span class="badge">4</span><span class="cardTitle">Instalação interna</span></div></div>
             ${imgInst ? `<div class="row"><span class="label">Foto da instalação do equipamento (ONT/Router)</span></div><div class="figure"><img class="img" src="${imgInst}" alt="Foto da instalação do equipamento (ONT/Router)" /></div>` : ''}
             ${imgMac ? `<div class="row"><span class="label">Foto do MAC do equipamento</span></div><div class="figure"><img class="img" src="${imgMac}" alt="Foto do MAC do equipamento" /></div>` : ''}
@@ -335,6 +344,129 @@ export default function App() {
     } catch (e) {
       console.error(e);
       Alert.alert('Erro', 'Falha ao gerar/compartilhar PDF.');
+    }
+  };
+
+  const onExportPdfItem = async (id) => {
+    try {
+      const row = await getChecklist(id);
+      if (!row) return;
+
+      const getMimeFromUri = (uri) => {
+        if (!uri) return 'image/jpeg';
+        const lower = uri.toLowerCase();
+        if (lower.endsWith('.png')) return 'image/png';
+        if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+        return 'image/jpeg';
+      };
+
+      const toBase64 = async (uri) => {
+        if (!uri) return null;
+        try {
+          const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+          const mime = getMimeFromUri(uri);
+          return `data:${mime};base64,${b64}`;
+        } catch {
+          return null;
+        }
+      };
+
+      const dataOrRead = async (dataUri, uri) => {
+        if (dataUri) return dataUri;
+        return await toBase64(uri);
+      };
+
+      const f = row;
+      const imgCto = await dataOrRead(f.fotoCtoDataUri, f.fotoCto);
+      const imgCasa = await dataOrRead(f.fotoFrenteCasaDataUri, f.fotoFrenteCasa);
+      const imgInst = await dataOrRead(f.fotoInstalacaoDataUri, f.fotoInstalacao);
+      const imgMac = await dataOrRead(f.fotoMacEquipDataUri, f.fotoMacEquip);
+
+      const yesNo = (v) => (v === 1 || v === true ? 'Sim' : v === 0 || v === false ? 'Não' : '—');
+      const capitalizeWords = (s) => {
+        if (!s) return '';
+        return String(s)
+          .split(/\s+/)
+          .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : ''))
+          .join(' ');
+      };
+
+      const html = `<!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <style>
+            @page { size: A4; margin: 10mm; }
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 10px; background:#f6f7fb; }
+            .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+            .title { font-size:20px; font-weight:700; color:#222; }
+            .meta { font-size:12px; color:#666; }
+            .card { background:#fff; border-radius:8px; padding:10px; box-shadow:0 2px 6px rgba(0,0,0,0.06); margin:12px 0; page-break-inside: avoid; break-inside: avoid; }
+            .cardHeader { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+            .badge { display:inline-block; background:#e1e8ff; color:#2f6fed; font-weight:700; font-size:12px; border-radius:6px; padding:4px 8px; margin-right:8px; }
+            .cardTitle { font-size:16px; font-weight:600; color:#333; }
+            .row { margin:4px 0; font-size:13px; color:#444; line-height:1.35; break-inside: avoid; page-break-inside: avoid; }
+            .label { font-weight:600; }
+            .figure { display:flex; flex-direction:column; align-items:flex-start; margin:6px 0; break-inside: avoid; page-break-inside: avoid; }
+            .img { width:260px; height:160px; object-fit:cover; border-radius:8px; }
+            a { color:#2f6fed; text-decoration:none; }
+            .link { word-break: break-all; }
+            /* Espaçamento extra no topo da seção 4 */
+            .card4 { padding-top: 16px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="title">Checklist de Instalação / Reparo</div>
+            <div class="meta">${new Date().toLocaleString()}</div>
+          </div>
+          <div class="card">
+            <div class="row"><span class="label">Usuário:</span> ${userId || ''}</div>
+          </div>
+
+          <div class="card">
+            <div class="cardHeader"><div><span class="badge">1</span><span class="cardTitle">Dados do cliente</span></div></div>
+            <div class="row"><span class="label">Nome completo:</span> ${capitalizeWords(f.nome) || ''}</div>
+            <div class="row"><span class="label">Rua e número:</span> ${f.ruaNumero || ''}</div>
+            <div class="row"><span class="label">Localização (link do Maps):</span> <span class="link">${f.locClienteLink ? `<a href="${f.locClienteLink}">${f.locClienteLink}</a>` : ''}</span></div>
+          </div>
+
+          <div class="card">
+            <div class="cardHeader"><div><span class="badge">2</span><span class="cardTitle">CTO / rede externa</span></div></div>
+            <div class="row"><span class="label">Localização da CTO (link do Maps):</span> <span class="link">${f.locCtoLink ? `<a href="${f.locCtoLink}">${f.locCtoLink}</a>` : ''}</span></div>
+            ${imgCto ? `<div class="row"><span class="label">Foto da CTO</span></div><div class="figure"><img class="img" src="${imgCto}" alt="Foto da CTO" /></div>` : ''}
+            <div class="row"><span class="label">Cor da fibra:</span> ${f.corFibra || ''}</div>
+            <div class="row"><span class="label">Possui splitter?</span> ${yesNo(f.possuiSplitter)}</div>
+            <div class="row"><span class="label">Número da porta utilizada pelo cliente:</span> ${f.portaCliente || ''}</div>
+          </div>
+
+          <div class="card">
+            <div class="cardHeader"><div><span class="badge">3</span><span class="cardTitle">Casa do cliente</span></div></div>
+            <div class="row"><span class="label">Localização da casa (link do Maps):</span> <span class="link">${f.locCasaLink ? `<a href="${f.locCasaLink}">${f.locCasaLink}</a>` : ''}</span></div>
+            ${imgCasa ? `<div class="row"><span class="label">Foto da frente da casa</span></div><div class="figure"><img class="img" src="${imgCasa}" alt="Foto da frente da casa" /></div>` : ''}
+          </div>
+
+          <div class="card card4">
+            <div class="cardHeader"><div><span class="badge">4</span><span class="cardTitle">Instalação interna</span></div></div>
+            ${imgInst ? `<div class="row"><span class="label">Foto da instalação do equipamento (ONT/Router)</span></div><div class="figure"><img class="img" src="${imgInst}" alt="Foto da instalação do equipamento (ONT/Router)" /></div>` : ''}
+            ${imgMac ? `<div class="row"><span class="label">Foto do MAC do equipamento</span></div><div class="figure"><img class="img" src="${imgMac}" alt="Foto do MAC do equipamento" /></div>` : ''}
+            <div class="row"><span class="label">Nome do Wi‑Fi:</span> ${f.nomeWifi || ''}</div>
+            <div class="row"><span class="label">Senha do Wi‑Fi:</span> ${f.senhaWifi || ''}</div>
+          </div>
+
+          <div class="card">
+            <div class="cardHeader"><div><span class="badge">5</span><span class="cardTitle">Finalização</span></div></div>
+            <div class="row"><span class="label">Teste de navegação realizado com sucesso?</span> ${yesNo(f.testeNavegacaoOk)}</div>
+            <div class="row"><span class="label">Cliente ciente e satisfeito com o serviço?</span> ${yesNo(f.clienteSatisfeito)}</div>
+          </div>
+        </body>
+      </html>`;
+
+      const { uri } = await Print.printToFileAsync({ html });
+      await shareAsync(uri, { UTI: 'com.adobe.pdf', mimeType: 'application/pdf' });
+    } catch (e) {
+      console.error(e);
+      Alert.alert('Erro', 'Falha ao gerar/compartilhar PDF do item.');
     }
   };
 
@@ -418,7 +550,7 @@ export default function App() {
           <Text style={styles.headerBtnText}>Ver checklists</Text>
         </Pressable>
       ) : (
-        <Pressable style={styles.headerBtn} onPress={() => setMode('editor')}>
+        <Pressable style={styles.headerBtn} onPress={() => { resetUIForNew(); setMode('editor'); }}>
           <Text style={styles.headerBtnText}>Voltar</Text>
         </Pressable>
       )}
@@ -532,7 +664,7 @@ export default function App() {
 
       {mode === 'list' ? (
         <ScrollView contentContainerStyle={styles.scrollContent}>
-          <Text style={styles.title}>Checklists de {userId}</Text>
+            <Text style={styles.title}>Checklists</Text>
           {Object.keys(groupedList).length === 0 && (
             <Text style={{ color: '#666' }}>Nenhum checklist salvo ainda.</Text>
           )}
@@ -545,6 +677,9 @@ export default function App() {
                     <Pressable style={{ flex: 1 }} onPress={() => loadChecklist(it.id)}>
                       <Text style={styles.listItemTitle}>{it.nome || 'Sem nome'}</Text>
                       <Text style={styles.listItemSub}>{new Date(it.created_at).toLocaleString()}</Text>
+                    </Pressable>
+                    <Pressable style={styles.btnSecondary} onPress={() => onExportPdfItem(it.id)}>
+                      <Text style={styles.btnSecondaryText}>Exportar</Text>
                     </Pressable>
                     <Pressable style={styles.delBtn} onPress={() => onDeleteRequest(it.id)}>
                       <Text style={styles.delBtnText}>Deletar</Text>
@@ -570,7 +705,12 @@ export default function App() {
               style={styles.input}
               placeholder="Nome completo"
               value={form.nome}
-              onChangeText={(t) => setField('nome', t)}
+              onChangeText={(t) => setField('nome', t.replace(/[^A-Za-zÀ-ÿ\s'\-]/g, ''))}
+              keyboardType="default"
+              autoCapitalize="words"
+              textContentType="name"
+              autoCorrect={false}
+              spellCheck={false}
             />
 
             <Text style={styles.label}>🏠 Rua e número</Text>
@@ -632,7 +772,12 @@ export default function App() {
               style={styles.input}
               placeholder="Ex.: Amarela, Azul..."
               value={form.corFibra}
-              onChangeText={(t) => setField('corFibra', t)}
+              onChangeText={(t) => setField('corFibra', t.replace(/[^A-Za-zÀ-ÿ\s'\-]/g, ''))}
+              keyboardType="default"
+              autoCapitalize="words"
+              textContentType="none"
+              autoCorrect={false}
+              spellCheck={false}
             />
 
             <Text style={styles.label}>🔀 Possui splitter?</Text>
@@ -643,7 +788,7 @@ export default function App() {
               style={styles.input}
               placeholder="Porta"
               value={form.portaCliente}
-              onChangeText={(t) => setField('portaCliente', t)}
+              onChangeText={(t) => setField('portaCliente', t.replace(/[^0-9]/g, ''))}
               keyboardType="number-pad"
             />
           </Section>
@@ -719,6 +864,10 @@ export default function App() {
               placeholder="SSID"
               value={form.nomeWifi}
               onChangeText={(t) => setField('nomeWifi', t)}
+              autoComplete="off"
+              textContentType="none"
+              autoCorrect={false}
+              spellCheck={false}
             />
 
             <Text style={styles.label}>🔑 Senha do Wi-Fi</Text>
@@ -729,6 +878,10 @@ export default function App() {
                 secureTextEntry={!showWifiPassword}
                 value={form.senhaWifi}
                 onChangeText={(t) => setField('senhaWifi', t)}
+                autoComplete="off"
+                textContentType="oneTimeCode"
+                autoCorrect={false}
+                spellCheck={false}
               />
               <Pressable
                 accessibilityRole="button"
