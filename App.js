@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   StyleSheet,
   Text,
@@ -87,6 +87,7 @@ export default function App() {
   const [editUserModalVisible, setEditUserModalVisible] = useState(false);
   const [editUserName, setEditUserName] = useState('');
   const [showWifiPassword, setShowWifiPassword] = useState(false);
+  const senhaWifiRef = useRef(null);
 
   useEffect(() => {
     (async () => {
@@ -205,6 +206,11 @@ export default function App() {
 
   const onSave = async () => {
     try {
+      // Evita alerta de salvar senha no iOS: desativa secureTextEntry temporariamente e desfoca o campo
+      const prevShow = showWifiPassword;
+      setShowWifiPassword(true);
+      senhaWifiRef.current?.blur();
+      await new Promise((r) => setTimeout(r, 50));
       if (!userId) return;
       if (!currentId) {
         const id = await saveChecklist(form, userId);
@@ -221,6 +227,8 @@ export default function App() {
         setSaveModalVisible(true);
       }
       await refreshList();
+      // Restaura visibilidade anterior
+      setShowWifiPassword(prevShow);
     } catch (e) {
       console.error(e);
       Alert.alert('Erro', 'Não foi possível salvar.');
@@ -676,7 +684,7 @@ export default function App() {
                   <View key={it.id} style={styles.listItem}>
                     <Pressable style={{ flex: 1 }} onPress={() => loadChecklist(it.id)}>
                       <Text style={styles.listItemTitle}>{it.nome || 'Sem nome'}</Text>
-                      <Text style={styles.listItemSub}>{new Date(it.created_at).toLocaleString()}</Text>
+                      <Text style={styles.listItemSub}>{new Date(it.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</Text>
                     </Pressable>
                     <Pressable style={styles.btnSecondary} onPress={() => onExportPdfItem(it.id)}>
                       <Text style={styles.btnSecondaryText}>Exportar</Text>
@@ -866,6 +874,7 @@ export default function App() {
               onChangeText={(t) => setField('nomeWifi', t)}
               autoComplete="off"
               textContentType="none"
+              autoCapitalize="none"
               autoCorrect={false}
               spellCheck={false}
             />
@@ -882,6 +891,7 @@ export default function App() {
                 textContentType="oneTimeCode"
                 autoCorrect={false}
                 spellCheck={false}
+                ref={senhaWifiRef}
               />
               <Pressable
                 accessibilityRole="button"
