@@ -618,6 +618,7 @@ export default function App() {
               placeholder="Nome do usuário"
               value={editUserName}
               onChangeText={setEditUserName}
+              maxLength={60}
             />
             <View style={styles.row}>
               <Pressable
@@ -714,7 +715,7 @@ export default function App() {
               placeholder="Nome completo"
               value={form.nome}
               onChangeText={(t) => setField('nome', t.replace(/[^A-Za-zÀ-ÿ\s'\-]/g, ''))}
-              maxLength={80}
+              maxLength={50}
               keyboardType="default"
               autoCapitalize="words"
               textContentType="name"
@@ -728,6 +729,7 @@ export default function App() {
               placeholder="Rua e número"
               value={form.ruaNumero}
               onChangeText={(t) => setField('ruaNumero', t)}
+              maxLength={50}
             />
 
             <Text style={styles.label}>📍 Localização (link do Maps)</Text>
@@ -737,6 +739,9 @@ export default function App() {
                 placeholder="https://www.google.com/maps?..."
                 value={form.locClienteLink}
                 onChangeText={(t) => setField('locClienteLink', t)}
+                autoCapitalize="none"
+                autoCorrect={false}
+                spellCheck={false}
               />
               <Pressable style={[styles.btn, styles.btnInline]} onPress={() => useCurrentLocation('locClienteLink')}>
                 <Text style={styles.btnText}>Puxar localização</Text>
@@ -757,6 +762,9 @@ export default function App() {
                 placeholder="https://www.google.com/maps?..."
                 value={form.locCtoLink}
                 onChangeText={(t) => setField('locCtoLink', t)}
+                autoCapitalize="none"
+                autoCorrect={false}
+                spellCheck={false}
               />
               <Pressable style={[styles.btn, styles.btnInline]} onPress={() => useCurrentLocation('locCtoLink')}>
                 <Text style={styles.btnText}>Puxar localização</Text>
@@ -782,6 +790,7 @@ export default function App() {
               placeholder="Ex.: Amarela, Azul..."
               value={form.corFibra}
               onChangeText={(t) => setField('corFibra', t.replace(/[^A-Za-zÀ-ÿ\s'\-]/g, ''))}
+              maxLength={20}
               keyboardType="default"
               autoCapitalize="words"
               textContentType="none"
@@ -799,6 +808,7 @@ export default function App() {
               value={form.portaCliente}
               onChangeText={(t) => setField('portaCliente', t.replace(/[^0-9]/g, ''))}
               keyboardType="number-pad"
+              maxLength={8}
             />
           </Section>
 
@@ -815,6 +825,9 @@ export default function App() {
                 placeholder="https://www.google.com/maps?..."
                 value={form.locCasaLink}
                 onChangeText={(t) => setField('locCasaLink', t)}
+                autoCapitalize="none"
+                autoCorrect={false}
+                spellCheck={false}
               />
               <Pressable style={[styles.btn, styles.btnInline]} onPress={() => useCurrentLocation('locCasaLink')}>
                 <Text style={styles.btnText}>Puxar localização</Text>
@@ -878,6 +891,7 @@ export default function App() {
               autoCapitalize="none"
               autoCorrect={false}
               spellCheck={false}
+              maxLength={32}
             />
 
             <Text style={styles.label}>🔑 Senha do Wi-Fi</Text>
@@ -893,6 +907,7 @@ export default function App() {
                 autoCorrect={false}
                 spellCheck={false}
                 ref={senhaWifiRef}
+                maxLength={32}
               />
               <Pressable
                 accessibilityRole="button"
