@@ -196,11 +196,21 @@ export default function App() {
 
   const onExportPdf = async () => {
     try {
+      const getMimeFromUri = (uri) => {
+        if (!uri) return 'image/jpeg';
+        const lower = uri.toLowerCase();
+        if (lower.endsWith('.png')) return 'image/png';
+        if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+        // Fallback for unknown extensions (HEIC/others): try jpeg
+        return 'image/jpeg';
+      };
+
       const toBase64 = async (uri) => {
         if (!uri) return null;
         try {
           const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-          return `data:image/jpeg;base64,${b64}`;
+          const mime = getMimeFromUri(uri);
+          return `data:${mime};base64,${b64}`;
         } catch {
           return null;
         }
@@ -212,50 +222,78 @@ export default function App() {
       const imgMac = await toBase64(form.fotoMacEquip);
 
       const yesNo = (v) => (v === true ? 'Sim' : v === false ? 'Não' : '—');
+      const capitalizeWords = (s) => {
+        if (!s) return '';
+        return s
+          .split(/\s+/)
+          .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : ''))
+          .join(' ');
+      };
 
       const html = `
       <html>
         <head>
           <meta charset="utf-8" />
           <style>
-            body { font-family: -apple-system, Roboto, Arial; padding: 16px; }
-            h1 { font-size: 20px; }
-            h2 { font-size: 16px; margin-top: 12px; }
-            .row { margin: 6px 0; }
-            .label { font-weight: 600; }
-            .img { width: 100%; height: auto; margin: 6px 0; }
+            body { font-family: -apple-system, Roboto, Arial; background:#f6f7fb; padding: 16px; }
+            .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+            .title { font-size:20px; font-weight:700; color:#222; }
+            .meta { font-size:12px; color:#666; }
+            .card { background:#fff; border-radius:8px; padding:12px; box-shadow:0 2px 6px rgba(0,0,0,0.06); margin-bottom:12px; }
+            .cardHeader { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+            .badge { display:inline-block; background:#e1e8ff; color:#2f6fed; font-weight:700; font-size:12px; border-radius:6px; padding:4px 8px; margin-right:8px; }
+            .cardTitle { font-size:16px; font-weight:600; color:#333; }
+            .row { margin:6px 0; font-size:13px; color:#444; }
+            .label { font-weight:600; }
+            .img { width:100%; height:auto; border-radius:8px; margin:6px 0; }
+            a { color:#2f6fed; text-decoration:none; }
+            .link { word-break: break-all; }
           </style>
         </head>
         <body>
-          <h1>Checklist de Instalação / Reparo</h1>
-          <div class="row"><span class="label">Usuário:</span> ${userId || ''}</div>
-          <div class="row"><span class="label">Criado em:</span> ${new Date().toLocaleString()}</div>
+          <div class="header">
+            <div class="title">Checklist de Instalação / Reparo</div>
+            <div class="meta">${new Date().toLocaleString()}</div>
+          </div>
+          <div class="card">
+            <div class="row"><span class="label">Usuário:</span> ${userId || ''}</div>
+          </div>
 
-          <h2>1) Dados do cliente</h2>
-          <div class="row"><span class="label">Nome:</span> ${form.nome || ''}</div>
-          <div class="row"><span class="label">Rua e número:</span> ${form.ruaNumero || ''}</div>
-          <div class="row"><span class="label">Localização cliente:</span> ${form.locClienteLink || ''}</div>
+          <div class="card">
+            <div class="cardHeader"><div><span class="badge">1</span><span class="cardTitle">Dados do cliente</span></div></div>
+            <div class="row"><span class="label">Nome completo:</span> ${capitalizeWords(form.nome) || ''}</div>
+            <div class="row"><span class="label">Rua e número:</span> ${form.ruaNumero || ''}</div>
+            <div class="row"><span class="label">Localização (Maps):</span> <span class="link">${form.locClienteLink ? `<a href="${form.locClienteLink}">${form.locClienteLink}</a>` : ''}</span></div>
+          </div>
 
-          <h2>2) CTO / Rede externa</h2>
-          <div class="row"><span class="label">Localização CTO:</span> ${form.locCtoLink || ''}</div>
-          ${imgCto ? `<img class="img" src="${imgCto}" />` : ''}
-          <div class="row"><span class="label">Cor da fibra:</span> ${form.corFibra || ''}</div>
-          <div class="row"><span class="label">Possui splitter:</span> ${yesNo(form.possuiSplitter)}</div>
-          <div class="row"><span class="label">Porta cliente:</span> ${form.portaCliente || ''}</div>
+          <div class="card">
+            <div class="cardHeader"><div><span class="badge">2</span><span class="cardTitle">CTO / rede externa</span></div></div>
+            <div class="row"><span class="label">Localização da CTO (Maps):</span> <span class="link">${form.locCtoLink ? `<a href="${form.locCtoLink}">${form.locCtoLink}</a>` : ''}</span></div>
+            ${imgCto ? `<img class="img" src="${imgCto}" />` : ''}
+            <div class="row"><span class="label">Cor da fibra:</span> ${form.corFibra || ''}</div>
+            <div class="row"><span class="label">Possui splitter:</span> ${yesNo(form.possuiSplitter)}</div>
+            <div class="row"><span class="label">Porta utilizada pelo cliente:</span> ${form.portaCliente || ''}</div>
+          </div>
 
-          <h2>3) Casa do cliente</h2>
-          <div class="row"><span class="label">Localização casa:</span> ${form.locCasaLink || ''}</div>
-          ${imgCasa ? `<img class="img" src="${imgCasa}" />` : ''}
+          <div class="card">
+            <div class="cardHeader"><div><span class="badge">3</span><span class="cardTitle">Casa do cliente</span></div></div>
+            <div class="row"><span class="label">Localização da casa (Maps):</span> <span class="link">${form.locCasaLink ? `<a href="${form.locCasaLink}">${form.locCasaLink}</a>` : ''}</span></div>
+            ${imgCasa ? `<img class="img" src="${imgCasa}" />` : ''}
+          </div>
 
-          <h2>4) Instalação interna</h2>
-          ${imgInst ? `<img class="img" src="${imgInst}" />` : ''}
-          ${imgMac ? `<img class="img" src="${imgMac}" />` : ''}
-          <div class="row"><span class="label">Nome do Wi-Fi:</span> ${form.nomeWifi || ''}</div>
-          <div class="row"><span class="label">Senha do Wi-Fi:</span> ${form.senhaWifi || ''}</div>
+          <div class="card">
+            <div class="cardHeader"><div><span class="badge">4</span><span class="cardTitle">Instalação interna</span></div></div>
+            ${imgInst ? `<img class="img" src="${imgInst}" />` : ''}
+            ${imgMac ? `<img class="img" src="${imgMac}" />` : ''}
+            <div class="row"><span class="label">Nome do Wi‑Fi:</span> ${form.nomeWifi || ''}</div>
+            <div class="row"><span class="label">Senha do Wi‑Fi:</span> ${form.senhaWifi || ''}</div>
+          </div>
 
-          <h2>5) Finalização</h2>
-          <div class="row"><span class="label">Teste de navegação:</span> ${yesNo(form.testeNavegacaoOk)}</div>
-          <div class="row"><span class="label">Cliente satisfeito:</span> ${yesNo(form.clienteSatisfeito)}</div>
+          <div class="card">
+            <div class="cardHeader"><div><span class="badge">5</span><span class="cardTitle">Finalização</span></div></div>
+            <div class="row"><span class="label">Teste de navegação ok:</span> ${yesNo(form.testeNavegacaoOk)}</div>
+            <div class="row"><span class="label">Cliente satisfeito:</span> ${yesNo(form.clienteSatisfeito)}</div>
+          </div>
         </body>
       </html>`;
 
@@ -555,7 +593,7 @@ export default function App() {
             <Text style={styles.label}>🎨 Cor da fibra</Text>
             <TextInput
               style={styles.input}
-              placeholder="Ex.: amarela, azul..."
+              placeholder="Ex.: Amarela, Azul..."
               value={form.corFibra}
               onChangeText={(t) => setField('corFibra', t)}
             />
