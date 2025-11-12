@@ -547,10 +547,10 @@ export default function App() {
 
   const Header = () => (
     <View style={styles.header}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
         <Text style={[styles.headerTitle, styles.headerLabel]}>Usuário:</Text>
-        <Pressable onPress={() => { setEditUserName(userId || ''); setEditUserModalVisible(true); }}>
-          <Text style={styles.headerTitle}>{userId || '—'}</Text>
+        <Pressable style={{ flexShrink: 1, minWidth: 0 }} onPress={() => { setEditUserName(userId || ''); setEditUserModalVisible(true); }}>
+          <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">{userId || '—'}</Text>
         </Pressable>
       </View>
       {mode === 'editor' ? (
@@ -683,7 +683,7 @@ export default function App() {
                 {items.map((it) => (
                   <View key={it.id} style={styles.listItem}>
                     <Pressable style={{ flex: 1 }} onPress={() => loadChecklist(it.id)}>
-                      <Text style={styles.listItemTitle}>{it.nome || 'Sem nome'}</Text>
+                      <Text style={styles.listItemTitle} numberOfLines={2} ellipsizeMode="tail">{it.nome || 'Sem nome'}</Text>
                       <Text style={styles.listItemSub}>{new Date(it.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</Text>
                     </Pressable>
                     <Pressable style={styles.btnSecondary} onPress={() => onExportPdfItem(it.id)}>
@@ -714,6 +714,7 @@ export default function App() {
               placeholder="Nome completo"
               value={form.nome}
               onChangeText={(t) => setField('nome', t.replace(/[^A-Za-zÀ-ÿ\s'\-]/g, ''))}
+              maxLength={80}
               keyboardType="default"
               autoCapitalize="words"
               textContentType="name"
