@@ -33,12 +33,6 @@
     },
     "plugins": [
       "expo-sqlite"
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "7706311a-a99a-41ec-9acb-2e51ec208f57"
-      }
-    },
-    "owner": "fullstackgabe"
+    ]
   }
 }
