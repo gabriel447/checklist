@@ -168,6 +168,58 @@ export default function App() {
   };
 
   const useCurrentLocation = async (fieldKey) => {
+    if (
+      Platform.OS === 'web' &&
+      typeof navigator !== 'undefined' &&
+      navigator.geolocation
+    ) {
+      if (typeof window !== 'undefined' && window.isSecureContext === false) {
+        Alert.alert('Permissão', 'Ative HTTPS ou use um túnel seguro para permitir localização.');
+      }
+      try {
+        const opts = { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 };
+        let pos = await new Promise((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, opts)
+        );
+        const { latitude, longitude } = pos.coords;
+        const link = `https://www.google.com/maps?q=${latitude},${longitude}`;
+        setField(fieldKey, link);
+        return;
+      } catch (e) {
+        if (e && e.code === 3) {
+          try {
+            const opts = { enableHighAccuracy: true, maximumAge: 0 };
+            const pos = await new Promise((resolve, reject) => {
+              const id = navigator.geolocation.watchPosition(
+                (p) => {
+                  navigator.geolocation.clearWatch(id);
+                  resolve(p);
+                },
+                (err) => {
+                  navigator.geolocation.clearWatch(id);
+                  reject(err);
+                },
+                opts
+              );
+              setTimeout(() => {
+                navigator.geolocation.clearWatch(id);
+                reject({ code: 3 });
+              }, 10000);
+            });
+            const { latitude, longitude } = pos.coords;
+            const link = `https://www.google.com/maps?q=${latitude},${longitude}`;
+            setField(fieldKey, link);
+            return;
+          } catch {}
+        }
+        const msg = e && e.code === 1
+          ? 'Permissão de localização negada no navegador.'
+          : e && e.code === 2
+          ? 'Localização indisponível no navegador.'
+          : 'Tempo excedido ou erro ao obter localização no navegador.';
+        Alert.alert('Permissão', msg);
+      }
+    }
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permissão', 'Permissão de localização negada.');
