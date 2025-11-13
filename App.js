@@ -53,6 +53,14 @@ const makeInitialForm = () => ({
   clienteSatisfeito: null,
 });
 
+const toTitleCase = (s) => {
+  if (!s) return '';
+  return s
+    .split(/\s+/)
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : ''))
+    .join(' ');
+};
+
 const Section = ({ title, children, expanded, onToggle }) => (
   <View style={styles.section}>
     <Pressable onPress={onToggle} style={styles.sectionHeader}>
@@ -720,7 +728,7 @@ export default function App() {
               style={styles.input}
               placeholder="Nome completo"
               value={form.nome}
-              onChangeText={(t) => setField('nome', t.replace(/[^A-Za-zÀ-ÿ\s'\-]/g, ''))}
+              onChangeText={(t) => setField('nome', toTitleCase(t.replace(/[^A-Za-zÀ-ÿ\s'\-]/g, '')))}
               maxLength={50}
               keyboardType="default"
               autoCapitalize="words"
@@ -734,7 +742,7 @@ export default function App() {
               style={styles.input}
               placeholder="Rua e número"
               value={form.ruaNumero}
-              onChangeText={(t) => setField('ruaNumero', t)}
+              onChangeText={(t) => setField('ruaNumero', toTitleCase(t))}
               maxLength={50}
             />
 
@@ -795,7 +803,7 @@ export default function App() {
               style={styles.input}
               placeholder="Ex.: Amarela, Azul..."
               value={form.corFibra}
-              onChangeText={(t) => setField('corFibra', t.replace(/[^A-Za-zÀ-ÿ\s'\-]/g, ''))}
+              onChangeText={(t) => setField('corFibra', toTitleCase(t.replace(/[^A-Za-zÀ-ÿ\s'\-]/g, '')))}
               maxLength={20}
               keyboardType="default"
               autoCapitalize="words"
