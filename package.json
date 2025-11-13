@@ -12,9 +12,11 @@
     "android:clean": "expo start -c --android"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.81.1",
     "expo": "54.0.23",
     "expo-file-system": "19.0.17",
     "expo-image-picker": "^17.0.8",
+    "expo-linear-gradient": "~15.0.7",
     "expo-location": "^19.0.7",
     "expo-print": "~15.0.7",
     "expo-sharing": "~14.0.7",

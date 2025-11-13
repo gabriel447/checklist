@@ -165,3 +165,19 @@ export async function deleteChecklist(id) {
   await db.runAsync('DELETE FROM checklists WHERE id = ?', [id]);
   return true;
 }
+
+export async function getCurrentUser() {
+  return null;
+}
+
+export async function signIn() {
+  return null;
+}
+
+export async function signUp() {
+  return null;
+}
+
+export async function signOut() {
+  return true;
+}

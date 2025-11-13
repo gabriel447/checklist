@@ -11,8 +11,11 @@ import {
   Alert,
   Modal,
   Platform,
+  Animated,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import * as Print from 'expo-print';
@@ -28,6 +31,12 @@ import * as Print from 'expo-print';
   updateChecklist,
   deleteChecklist,
   setUserId,
+  getCurrentUser,
+  signIn,
+  signUp,
+  signOut,
+  getProfile,
+  isSupabaseReady,
 } from './db';
 
 const makeInitialForm = () => ({
@@ -60,6 +69,26 @@ const toTitleCase = (s) => {
     .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : ''))
     .join(' ');
 };
+const formatPhoneBR = (s) => {
+  const d = (s || '').replace(/\D+/g, '');
+  if (d.length <= 2) return d;
+  if (d.length <= 6) return `(${d.slice(0,2)}) ${d.slice(2)}`;
+  if (d.length <= 10) return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`;
+  return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7,11)}`;
+};
+const isStrongPassword = (s) => {
+  if (!s || s.length < 12) return false;
+  if (!/[A-Za-z]/.test(s)) return false;
+  if (!/[A-Z]/.test(s)) return false;
+  if (!/[0-9]/.test(s)) return false;
+  if (!/[^A-Za-z0-9]/.test(s)) return false;
+  return true;
+};
+const isValidEmail = (s) => {
+  if (!s) return false;
+  const e = s.trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e);
+};
 
 const Section = ({ title, children, expanded, onToggle }) => (
   <View style={styles.section}>
@@ -83,36 +112,159 @@ export default function App() {
   const [form, setForm] = useState(makeInitialForm());
   const [originalForm, setOriginalForm] = useState(makeInitialForm());
 
-  const [mode, setMode] = useState('editor'); // 'editor' | 'list'
+  const [mode, setMode] = useState(Platform.OS === 'web' ? 'auth' : 'editor');
+  const [authMode, setAuthMode] = useState('login');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authFirstName, setAuthFirstName] = useState('');
+  const [authLastName, setAuthLastName] = useState('');
+  const [authPhone, setAuthPhone] = useState('');
+  const [showAuthPassword, setShowAuthPassword] = useState(false);
   const [userId, setUserIdState] = useState(null);
+  const [userName, setUserName] = useState(null);
   const [currentId, setCurrentId] = useState(null);
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [route, setRoute] = useState(
+    Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.pathname || '/' : '/'
+  );
 
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [saveModalVisible, setSaveModalVisible] = useState(false);
   const [saveModalMessage, setSaveModalMessage] = useState('');
+  const [bannerType, setBannerType] = useState('success');
   const [editUserModalVisible, setEditUserModalVisible] = useState(false);
   const [editUserName, setEditUserName] = useState('');
   const [showWifiPassword, setShowWifiPassword] = useState(false);
   const senhaWifiRef = useRef(null);
+  const bannerOpacity = useRef(new Animated.Value(0)).current;
+  const bannerTimerRef = useRef(null);
+  const [isLocating, setIsLocating] = useState(false);
+  const [locatingKey, setLocatingKey] = useState(null);
+  const [isNavigatingList, setIsNavigatingList] = useState(false);
+
+
+  const clearAuthFields = () => {
+    setAuthEmail('');
+    setAuthPassword('');
+    setAuthFirstName('');
+    setAuthLastName('');
+    setAuthPhone('');
+    setErrorMessage(null);
+  };
+
+  const onLogout = async () => {
+    try {
+      await signOut();
+    } catch {}
+    setUserIdState(null);
+    setUserName(null);
+    setList([]);
+    resetUIForNew();
+    setAuthEmail('');
+    setAuthPassword('');
+    setAuthFirstName('');
+    setAuthLastName('');
+    setAuthPhone('');
+    setAuthMode('login');
+    setMode('auth');
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.history.pushState({}, '', '/login');
+      setRoute('/login');
+    }
+  };
 
   useEffect(() => {
     (async () => {
       try {
         await initDB();
-        const uid = await getOrCreateUserId();
-        setUserIdState(uid);
-        await refreshList();
+        if (Platform.OS === 'web') {
+          const ready = typeof isSupabaseReady === 'function' ? isSupabaseReady() : true;
+          const u = await getCurrentUser();
+          if (u && u.id) {
+            setUserIdState(u.id);
+            await setUserId(u.id);
+            try {
+              const p = await getProfile(u.id);
+              const nm = [p?.first_name, p?.last_name].filter(Boolean).join(' ').trim();
+              setUserName(nm || p?.first_name || null);
+            } catch {}
+            await refreshList();
+          } else {
+            if (typeof window !== 'undefined') {
+              window.history.replaceState({}, '', '/login');
+              setRoute('/login');
+            }
+            setAuthMode('login');
+            setMode('auth');
+          }
+        } else {
+          const uid = await getOrCreateUserId();
+          setUserIdState(uid);
+          await refreshList();
+        }
       } catch (e) {
         console.error(e);
-        Alert.alert('Erro', 'Falha ao inicializar banco de dados.');
+        setErrorMessage('Falha ao inicializar. Verifique configuração do Supabase (URL/KEY).');
       } finally {
         setLoading(false);
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const sync = () => {
+        const p = window.location.pathname || '/';
+        setRoute(p);
+        if (p === '/login') {
+          setAuthMode('login');
+          setMode('auth');
+        } else if (p === '/cadastro') {
+          setAuthMode('register');
+          setMode('auth');
+        } else if (p === '/lista') {
+          setMode('list');
+        } else {
+          setMode('editor');
+        }
+      };
+      window.addEventListener('popstate', sync);
+      return () => window.removeEventListener('popstate', sync);
+    }
+    return () => {};
+  }, []);
+
+  useEffect(() => {
+    if (saveModalVisible) {
+      Animated.timing(bannerOpacity, { toValue: 1, duration: 400, useNativeDriver: Platform.OS !== 'web' }).start();
+      if (bannerTimerRef.current) { clearTimeout(bannerTimerRef.current); bannerTimerRef.current = null; }
+      bannerTimerRef.current = setTimeout(() => {
+        Animated.timing(bannerOpacity, { toValue: 0, duration: 600, useNativeDriver: Platform.OS !== 'web' }).start(() => {
+          setSaveModalVisible(false);
+        });
+      }, 3500);
+      return () => {
+        if (bannerTimerRef.current) { clearTimeout(bannerTimerRef.current); bannerTimerRef.current = null; }
+      };
+    }
+    return () => {};
+  }, [saveModalVisible]);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      if (!userId && (route === '/' || route === '/lista')) {
+        if (typeof window !== 'undefined') {
+          window.history.replaceState({}, '', '/login');
+          setRoute('/login');
+        }
+        setAuthMode('login');
+        setMode('auth');
+      }
+    }
+  }, [userId, route]);
 
   const refreshList = async () => {
     const rows = await listChecklists();
@@ -138,7 +290,6 @@ export default function App() {
     } catch (e) {
       result = null;
     }
-    // Se câmera não abriu ou usuário cancelou, tenta galeria
     if (!result || result.canceled) {
       result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
@@ -168,14 +319,13 @@ export default function App() {
   };
 
   const useCurrentLocation = async (fieldKey) => {
+    setIsLocating(true);
+    setLocatingKey(fieldKey);
     if (
       Platform.OS === 'web' &&
       typeof navigator !== 'undefined' &&
       navigator.geolocation
     ) {
-      if (typeof window !== 'undefined' && window.isSecureContext === false) {
-        Alert.alert('Permissão', 'Ative HTTPS ou use um túnel seguro para permitir localização.');
-      }
       try {
         const opts = { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 };
         let pos = await new Promise((resolve, reject) =>
@@ -184,6 +334,8 @@ export default function App() {
         const { latitude, longitude } = pos.coords;
         const link = `https://www.google.com/maps?q=${latitude},${longitude}`;
         setField(fieldKey, link);
+        setIsLocating(false);
+        setLocatingKey(null);
         return;
       } catch (e) {
         if (e && e.code === 3) {
@@ -209,6 +361,8 @@ export default function App() {
             const { latitude, longitude } = pos.coords;
             const link = `https://www.google.com/maps?q=${latitude},${longitude}`;
             setField(fieldKey, link);
+            setIsLocating(false);
+            setLocatingKey(null);
             return;
           } catch {}
         }
@@ -217,18 +371,69 @@ export default function App() {
           : e && e.code === 2
           ? 'Localização indisponível no navegador.'
           : 'Tempo excedido ou erro ao obter localização no navegador.';
-        Alert.alert('Permissão', msg);
+        setBannerType('error');
+        setSaveModalMessage(msg);
+        setSaveModalVisible(true);
+        setIsLocating(false);
+        setLocatingKey(null);
+        return;
       }
     }
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permissão', 'Permissão de localização negada.');
-      return;
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setBannerType('error');
+        setSaveModalMessage('Permissão de localização negada.');
+        setSaveModalVisible(true);
+        setIsLocating(false);
+        setLocatingKey(null);
+        return;
+      }
+      let pos = null;
+      try {
+        pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      } catch (e) {
+        pos = await Location.getLastKnownPositionAsync();
+      }
+      if (!pos || !pos.coords) {
+        let got = null;
+        try {
+          let resolved = false;
+          const sub = await Location.watchPositionAsync(
+            { accuracy: Location.Accuracy.High, timeInterval: 2000, distanceInterval: 0 },
+            (p) => {
+              if (!resolved && p && p.coords) {
+                resolved = true;
+                got = p;
+                sub.remove();
+              }
+            }
+          );
+          await new Promise((r) => setTimeout(r, 10000));
+          if (!resolved) sub.remove();
+        } catch {}
+        if (!got || !got.coords) {
+          setBannerType('error');
+          setSaveModalMessage('Localização indisponível no dispositivo.');
+          setSaveModalVisible(true);
+          setIsLocating(false);
+          setLocatingKey(null);
+          return;
+        }
+        pos = got;
+      }
+      const { latitude, longitude } = pos.coords;
+      const link = `https://www.google.com/maps?q=${latitude},${longitude}`;
+      setField(fieldKey, link);
+      setIsLocating(false);
+      setLocatingKey(null);
+    } catch (e) {
+      setBannerType('error');
+      setSaveModalMessage('Falha ao obter localização.');
+      setSaveModalVisible(true);
+      setIsLocating(false);
+      setLocatingKey(null);
     }
-    const pos = await Location.getCurrentPositionAsync({});
-    const { latitude, longitude } = pos.coords;
-    const link = `https://www.google.com/maps?q=${latitude},${longitude}`;
-    setField(fieldKey, link);
   };
 
   const ToggleYesNo = ({ value, onChange }) => (
@@ -279,7 +484,6 @@ export default function App() {
         setOriginalForm(form);
         setSaveModalMessage('Checklist criado com sucesso.');
         setSaveModalVisible(true);
-        // Após criar, prepara a tela para um novo checklist
         resetUIForNew();
       } else {
         await updateChecklist(currentId, form);
@@ -288,7 +492,6 @@ export default function App() {
         setSaveModalVisible(true);
       }
       await refreshList();
-      // Restaura visibilidade anterior
       setShowWifiPassword(prevShow);
     } catch (e) {
       console.error(e);
@@ -303,7 +506,6 @@ export default function App() {
         const lower = uri.toLowerCase();
         if (lower.endsWith('.png')) return 'image/png';
         if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
-        // Fallback for unknown extensions (HEIC/others): try jpeg
         return 'image/jpeg';
       };
 
@@ -606,24 +808,46 @@ export default function App() {
     return groups;
   }, [list]);
 
+  const actionLabel = currentId ? 'Salvar alterações' : 'Criar checklist';
+  const wantsAuthRoute = Platform.OS === 'web' && (route === '/login' || route === '/cadastro');
+  const effectiveMode = Platform.OS === 'web' && (!userId || wantsAuthRoute) ? 'auth' : mode;
+
   const Header = () => (
     <View style={styles.header}>
       <View style={styles.headerInner}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
           <Text style={[styles.headerTitle, styles.headerLabel]}>Usuário:</Text>
-          <Pressable style={{ flexShrink: 1, minWidth: 0 }} onPress={() => { setEditUserName(userId || ''); setEditUserModalVisible(true); }}>
-            <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">{userId || '—'}</Text>
+          <Pressable style={{ flexShrink: 1, minWidth: 0 }} onPress={() => { if (mode !== 'auth') { setEditUserName(userId || ''); setEditUserModalVisible(true); } }}>
+            <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">{userName || userId || '—'}</Text>
           </Pressable>
         </View>
-        {mode === 'editor' ? (
-          <Pressable style={styles.headerBtn} onPress={() => setMode('list')}>
-            <Text style={styles.headerBtnText}>Ver checklists</Text>
-          </Pressable>
-        ) : (
-          <Pressable style={styles.headerBtn} onPress={() => { resetUIForNew(); setMode('editor'); }}>
-            <Text style={styles.headerBtnText}>Voltar</Text>
-          </Pressable>
-        )}
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          {effectiveMode !== 'auth' ? (
+            <>
+              {effectiveMode === 'editor' ? (
+                <Pressable style={styles.headerBtn} onPress={async () => { try { setIsNavigatingList(true); if (Platform.OS === 'web') { window.history.pushState({}, '', '/lista'); setRoute('/lista'); setMode('list'); } else { setMode('list'); } await refreshList(); } finally { setIsNavigatingList(false); } }}>
+                  {isNavigatingList ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.headerBtnText}>Ver checklists</Text>
+                  )}
+                </Pressable>
+              ) : (
+                <Pressable style={styles.headerBtn} onPress={() => { resetUIForNew(); if (Platform.OS === 'web') { window.history.pushState({}, '', '/'); setRoute('/'); setMode('editor'); } else { setMode('editor'); } }}>
+                  <Text style={styles.headerBtnText}>Voltar</Text>
+                </Pressable>
+              )}
+              {Platform.OS === 'web' ? (
+                <Pressable
+                  style={[styles.headerBtn, styles.headerBtnLogout]}
+                  onPress={onLogout}
+                >
+                  <Text style={styles.headerBtnText}>Sair</Text>
+                </Pressable>
+              ) : null}
+            </>
+          ) : null}
+        </View>
       </View>
     </View>
   );
@@ -636,12 +860,22 @@ export default function App() {
     );
   }
 
-  const actionLabel = currentId ? 'Salvar alterações' : 'Criar checklist';
+  
+
+  
 
   return (
     <SafeAreaProvider>
     <SafeAreaView style={styles.container}>
-      <Header />
+      {effectiveMode === 'auth' ? (
+        <LinearGradient
+          colors={["#eef2ff", "#f8f9fc", "#eaf0ff"]}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={styles.bgGradient}
+        />
+      ) : null}
+      {effectiveMode !== 'auth' ? <Header /> : null}
 
       {/* Modal de confirmação de exclusão */}
       <Modal
@@ -716,25 +950,218 @@ export default function App() {
         </View>
       </Modal>
 
-      {/* Modal de sucesso ao salvar */}
-      <Modal
-        transparent
-        visible={saveModalVisible}
-        animationType="fade"
-        onRequestClose={() => setSaveModalVisible(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>Sucesso</Text>
-            <Text style={styles.modalText}>{saveModalMessage}</Text>
-            <Pressable style={[styles.btn, styles.modalBtn]} onPress={() => setSaveModalVisible(false)}>
-              <Text style={styles.btnText}>OK</Text>
-            </Pressable>
-          </View>
+      {effectiveMode === 'auth' && saveModalVisible ? (
+        <View style={styles.bannerWrap}>
+          <Animated.View style={[bannerType === 'error' ? styles.bannerBoxError : bannerType === 'warn' ? styles.bannerBoxWarn : styles.bannerBoxSuccess, { opacity: bannerOpacity }]}>
+            <Text style={bannerType === 'error' ? styles.bannerTextError : bannerType === 'warn' ? styles.bannerTextWarn : styles.bannerTextSuccess}>{saveModalMessage}</Text>
+          </Animated.View>
         </View>
-      </Modal>
+      ) : null}
 
-      {mode === 'list' ? (
+      {effectiveMode === 'auth' ? (
+        <ScrollView contentContainerStyle={[styles.scrollContent, styles.scrollContentAuth]}>
+          <View style={[styles.content, styles.contentAuth]}>
+            <View style={styles.authBox}>
+            
+            <Text style={styles.title}>{authMode === 'login' ? 'Entrar' : 'Cadastrar'}</Text>
+            {authMode === 'register' ? (
+              <>
+                <TextInput
+                  style={styles.input}
+                  value={authFirstName}
+                  onChangeText={(t) => setAuthFirstName(toTitleCase(t.replace(/[^A-Za-zÀ-ÿ\s'\-]/g, '')))}
+                  maxLength={50}
+                  placeholder="Nome"
+                  placeholderTextColor="#9aa0b5"
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                />
+                <TextInput
+                  style={styles.input}
+                  value={authLastName}
+                  onChangeText={(t) => setAuthLastName(toTitleCase(t.replace(/[^A-Za-zÀ-ÿ\s'\-]/g, '')))}
+                  maxLength={50}
+                  placeholder="Sobrenome"
+                  placeholderTextColor="#9aa0b5"
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                />
+                <TextInput
+                  style={styles.input}
+                  value={authPhone}
+                  onChangeText={(t) => setAuthPhone(formatPhoneBR(t))}
+                  keyboardType="phone-pad"
+                  maxLength={20}
+                  placeholder="Telefone"
+                  placeholderTextColor="#9aa0b5"
+                />
+              </>
+            ) : null}
+            <TextInput
+              style={styles.input}
+              value={authEmail}
+              onChangeText={setAuthEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              placeholder="E-mail"
+              placeholderTextColor="#9aa0b5"
+              autoComplete="off"
+              textContentType="none"
+            />
+            {authMode === 'register' ? (
+              <View style={styles.inputWrapper}>
+                <TextInput
+                  style={[styles.input, styles.inputWithIcon]}
+                  value={authPassword}
+                  onChangeText={setAuthPassword}
+                  secureTextEntry={!showAuthPassword}
+                  placeholder="Senha"
+                  placeholderTextColor="#9aa0b5"
+                  autoComplete="off"
+                  textContentType="none"
+                />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={showAuthPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                  style={styles.inputIconBtn}
+                  onPress={() => setShowAuthPassword((v) => !v)}
+                >
+                  <Feather name={showAuthPassword ? 'eye' : 'eye-off'} size={18} color="#666" />
+                </Pressable>
+              </View>
+            ) : (
+              <TextInput
+                style={styles.input}
+                value={authPassword}
+                onChangeText={setAuthPassword}
+                secureTextEntry
+                placeholder="Senha"
+                placeholderTextColor="#9aa0b5"
+                autoComplete="off"
+                textContentType="none"
+              />
+            )}
+            
+            {(() => {
+              const email = (authEmail || '').trim();
+              const phoneDigits = (authPhone || '').replace(/\D+/g, '');
+              const loginReady = isValidEmail(email) && (authPassword || '').length >= 12;
+              const registerReady = isValidEmail(email) && (authPassword || '').length >= 12 && phoneDigits.length === 11 && !!authFirstName && !!authLastName;
+              return (
+            <View style={styles.row}>
+              {authMode === 'login' ? (
+                <Pressable style={[styles.btn, !loginReady && styles.btnDisabled, { flex: 1 }]} disabled={!loginReady} onPress={async () => {
+                  try {
+                    const email = authEmail.trim();
+                    if (!isValidEmail(email)) { return; }
+                    try { await signOut(); } catch {}
+                    const u = await signIn({ email: email, password: authPassword });
+                    if (u && u.id) {
+                      setUserIdState(u.id);
+                      await setUserId(u.id);
+                      try {
+                        const p = await getProfile(u.id);
+                        const nm = [p?.first_name, p?.last_name].filter(Boolean).join(' ').trim();
+                        setUserName(nm || p?.first_name || null);
+                      } catch {}
+                      setErrorMessage(null);
+                      if (Platform.OS === 'web') {
+                        setTimeout(() => {
+                          window.history.pushState({}, '', '/');
+                          setRoute('/');
+                          setMode('editor');
+                        }, 80);
+                      } else {
+                        setMode('editor');
+                      }
+                      await refreshList();
+                    } else {
+                      setBannerType('error');
+                      setSaveModalMessage('Não foi possível fazer login.');
+                      setSaveModalVisible(true);
+                    }
+                  } catch (e) {
+                    setBannerType('error');
+                    setSaveModalMessage('Não foi possível fazer login.');
+                    setSaveModalVisible(true);
+                  }
+                }}>
+                  <Text style={styles.btnText}>Entrar</Text>
+                </Pressable>
+              ) : (
+                <Pressable style={[styles.btn, !registerReady && styles.btnDisabled, { flex: 1 }]} disabled={!registerReady} onPress={async () => {
+                  try {
+                    const digits = (authPhone || '').replace(/\D+/g, '');
+                    if (!authFirstName || !authLastName || !authEmail || !authPassword || digits.length !== 11) { return; }
+                    const email = authEmail.trim();
+                    if (!isValidEmail(email)) { return; }
+                    if (!isStrongPassword(authPassword)) {
+                      setBannerType('warn');
+                      setSaveModalMessage('A senha precisa ter 12+ caracteres, letra maiúscula, número e caractere especial.');
+                      setSaveModalVisible(true);
+                      return;
+                    }
+                    const res = await signUp({ email: email, password: authPassword, firstName: authFirstName.trim(), lastName: authLastName.trim(), phone: authPhone.trim() });
+                    const u = res?.user;
+                    const hasSession = !!res?.session;
+                    if (hasSession && u && u.id) {
+                      setUserIdState(u.id);
+                      await setUserId(u.id);
+                      setUserName(`${authFirstName.trim()} ${authLastName.trim()}`.trim());
+                      setBannerType('success');
+                      setSaveModalMessage('Conta criada com sucesso.');
+                      setSaveModalVisible(true);
+                      setAuthEmail(authEmail.trim());
+                      setAuthPassword(authPassword);
+                      setShowAuthPassword(false);
+                      if (Platform.OS === 'web') { window.history.pushState({}, '', '/login'); setRoute('/login'); setAuthMode('login'); setMode('auth'); }
+                      await refreshList();
+                    } else if (u && u.id && Platform.OS === 'web') {
+                      setErrorMessage('Conta criada. Verifique seu e‑mail para confirmar e depois faça login.');
+                      window.history.pushState({}, '', '/login');
+                      setRoute('/login');
+                      setAuthMode('login');
+                      setMode('auth');
+                    } else {
+                      setBannerType('error');
+                      setSaveModalMessage('Não foi possível cadastrar.');
+                      setSaveModalVisible(true);
+                    }
+                  } catch (e) {
+                    setBannerType('error');
+                    setSaveModalMessage('Não foi possível cadastrar.');
+                    setSaveModalVisible(true);
+                  }
+                }}>
+                  <Text style={styles.btnText}>Cadastrar</Text>
+                </Pressable>
+              )}
+            </View>
+              );
+            })()}
+            <Pressable
+              style={[styles.btnSecondary, { marginTop: 8 }]}
+              onPress={() => {
+                if (Platform.OS === 'web') {
+                  const to = authMode === 'login' ? '/cadastro' : '/login';
+                  window.history.pushState({}, '', to);
+                  setRoute(to);
+                  setAuthMode(authMode === 'login' ? 'register' : 'login');
+                  setMode('auth');
+                  clearAuthFields();
+                } else {
+                  setAuthMode(authMode === 'login' ? 'register' : 'login');
+                  setMode('auth');
+                  clearAuthFields();
+                }
+              }}
+            >
+              <Text style={styles.btnSecondaryText}>{authMode === 'login' ? 'Criar conta' : 'Já tenho conta'}</Text>
+            </Pressable>
+            </View>
+          </View>
+        </ScrollView>
+      ) : effectiveMode === 'list' ? (
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.content}>
             <Text style={styles.title}>Checklists</Text>
@@ -809,8 +1236,12 @@ export default function App() {
                 autoCorrect={false}
                 spellCheck={false}
               />
-              <Pressable style={[styles.btn, styles.btnInline]} onPress={() => useCurrentLocation('locClienteLink')}>
-                <Text style={styles.btnText}>Puxar localização</Text>
+              <Pressable style={[styles.btn, styles.btnInline]} onPress={() => useCurrentLocation('locClienteLink')} disabled={isLocating}>
+                {isLocating && locatingKey === 'locClienteLink' ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.btnText}>Puxar localização</Text>
+                )}
               </Pressable>
             </View>
           </Section>
@@ -832,8 +1263,12 @@ export default function App() {
                 autoCorrect={false}
                 spellCheck={false}
               />
-              <Pressable style={[styles.btn, styles.btnInline]} onPress={() => useCurrentLocation('locCtoLink')}>
-                <Text style={styles.btnText}>Puxar localização</Text>
+              <Pressable style={[styles.btn, styles.btnInline]} onPress={() => useCurrentLocation('locCtoLink')} disabled={isLocating}>
+                {isLocating && locatingKey === 'locCtoLink' ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.btnText}>Puxar localização</Text>
+                )}
               </Pressable>
             </View>
 
@@ -895,8 +1330,12 @@ export default function App() {
                 autoCorrect={false}
                 spellCheck={false}
               />
-              <Pressable style={[styles.btn, styles.btnInline]} onPress={() => useCurrentLocation('locCasaLink')}>
-                <Text style={styles.btnText}>Puxar localização</Text>
+              <Pressable style={[styles.btn, styles.btnInline]} onPress={() => useCurrentLocation('locCasaLink')} disabled={isLocating}>
+                {isLocating && locatingKey === 'locCasaLink' ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.btnText}>Puxar localização</Text>
+                )}
               </Pressable>
             </View>
 
@@ -1029,7 +1468,15 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f6f7fb',
+    backgroundColor: '#f8f9fc',
+  },
+  bgGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    pointerEvents: 'none',
   },
   header: {
     paddingTop: 16,
@@ -1067,14 +1514,38 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
+  headerBtnLogout: {
+    backgroundColor: Platform.OS === 'web' ? '#e53e3e' : undefined,
+    borderColor: Platform.OS === 'web' ? '#e53e3e' : undefined,
+  },
   scrollContent: {
-    padding: 16,
+    paddingHorizontal: Platform.OS === 'web' ? 16 : 24,
+    paddingTop: 16,
     paddingBottom: 40,
+  },
+  scrollContentAuth: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingTop: 24,
   },
   content: {
     width: '100%',
     maxWidth: 800,
     alignSelf: Platform.OS === 'web' ? 'center' : 'auto',
+  },
+  contentAuth: {
+    maxWidth: Platform.OS === 'web' ? 420 : 600,
+    alignSelf: 'center',
+  },
+  authBox: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    boxShadow: Platform.OS === 'web' ? '0 8px 24px rgba(0,0,0,0.08)' : undefined,
+    shadowColor: Platform.OS === 'web' ? undefined : '#000',
+    shadowOpacity: Platform.OS === 'web' ? undefined : 0.08,
+    shadowRadius: Platform.OS === 'web' ? undefined : 12,
+    shadowOffset: Platform.OS === 'web' ? undefined : { width: 0, height: 6 },
   },
   title: {
     fontSize: 16,
@@ -1087,10 +1558,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
+    shadowColor: Platform.OS === 'web' ? undefined : '#000',
+    shadowOpacity: Platform.OS === 'web' ? undefined : 0.06,
+    shadowRadius: Platform.OS === 'web' ? undefined : 6,
+    shadowOffset: Platform.OS === 'web' ? undefined : { width: 0, height: 2 },
     elevation: 1,
   },
   sectionHeader: {
@@ -1117,7 +1588,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   input: {
-    backgroundColor: '#f2f3f7',
+    backgroundColor: '#f7f8fc',
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: Platform.OS === 'web' ? 8 : 10,
@@ -1273,31 +1744,74 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
   },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+  bannerWrap: {
+    position: 'absolute',
+    top: Platform.OS === 'web' ? 12 : 24,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+    elevation: 3,
+    pointerEvents: 'none',
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  modalBox: {
-    width: Platform.OS === 'web' ? 560 : '85%',
-    backgroundColor: '#fff',
+  bannerBoxSuccess: {
+    backgroundColor: '#e6f6ea',
     borderRadius: 10,
-    padding: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    boxShadow: Platform.OS === 'web' ? '0 6px 16px rgba(0,0,0,0.08)' : undefined,
+    shadowColor: Platform.OS === 'web' ? undefined : '#000',
+    shadowOpacity: Platform.OS === 'web' ? undefined : 0.08,
+    shadowRadius: Platform.OS === 'web' ? undefined : 10,
+    shadowOffset: Platform.OS === 'web' ? undefined : { width: 0, height: 4 },
+    borderWidth: Platform.OS === 'web' ? 1 : 0,
+    borderColor: '#b7e3c7',
+    maxWidth: Platform.OS === 'web' ? 360 : '90%',
   },
-  modalTitle: {
-    fontSize: 16,
+  bannerTextSuccess: {
+    fontSize: Platform.OS === 'web' ? 14 : 13,
+    color: '#166534',
+    textAlign: 'center',
     fontWeight: '700',
-    color: '#222',
-    marginBottom: 8,
   },
-  modalText: {
-    fontSize: 14,
-    color: '#444',
-    marginBottom: 12,
+  bannerBoxWarn: {
+    backgroundColor: '#fef3c7',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    boxShadow: Platform.OS === 'web' ? '0 6px 16px rgba(0,0,0,0.08)' : undefined,
+    shadowColor: Platform.OS === 'web' ? undefined : '#000',
+    shadowOpacity: Platform.OS === 'web' ? undefined : 0.08,
+    shadowRadius: Platform.OS === 'web' ? undefined : 10,
+    shadowOffset: Platform.OS === 'web' ? undefined : { width: 0, height: 4 },
+    borderWidth: Platform.OS === 'web' ? 1 : 0,
+    borderColor: '#fde68a',
+    maxWidth: Platform.OS === 'web' ? 360 : '90%',
   },
-  modalBtn: {
-    alignSelf: Platform.OS === 'web' ? 'flex-end' : 'auto',
-    minWidth: Platform.OS === 'web' ? 120 : undefined,
+  bannerTextWarn: {
+    fontSize: Platform.OS === 'web' ? 14 : 13,
+    color: '#7c2d12',
+    textAlign: 'center',
+    fontWeight: '700',
+  },
+  bannerBoxError: {
+    backgroundColor: '#fde8e8',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    boxShadow: Platform.OS === 'web' ? '0 6px 16px rgba(0,0,0,0.08)' : undefined,
+    shadowColor: Platform.OS === 'web' ? undefined : '#000',
+    shadowOpacity: Platform.OS === 'web' ? undefined : 0.08,
+    shadowRadius: Platform.OS === 'web' ? undefined : 10,
+    shadowOffset: Platform.OS === 'web' ? undefined : { width: 0, height: 4 },
+    borderWidth: Platform.OS === 'web' ? 1 : 0,
+    borderColor: '#f4b7b7',
+    maxWidth: Platform.OS === 'web' ? 360 : '90%',
+  },
+  bannerTextError: {
+    fontSize: Platform.OS === 'web' ? 14 : 13,
+    color: '#7f1d1d',
+    textAlign: 'center',
+    fontWeight: '700',
   },
 });
