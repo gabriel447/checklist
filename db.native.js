@@ -197,3 +197,11 @@ export async function updateProfile(userId, { firstName, lastName, phone }) {
 export async function updateAuth() {
   return true;
 }
+
+export async function getProfile() {
+  return null;
+}
+
+export async function findUserByCpf() {
+  return null;
+}

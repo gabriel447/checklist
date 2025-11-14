@@ -243,6 +243,7 @@ export async function signIn({ email, password }) {
             first_name: md.first_name || '',
             last_name: md.last_name || '',
             phone: md.phone || '',
+            cpf: md.cpf || '',
           });
       }
     } catch {}
@@ -250,9 +251,9 @@ export async function signIn({ email, password }) {
   return user;
 }
 
-export async function signUp({ email, password, firstName, lastName, phone }) {
+export async function signUp({ email, password, firstName, lastName, phone, cpf }) {
   const client = getClient();
-  if (!client) return { user: null, session: null };
+  if (!client) return { user: null, session: null, error: 'Supabase não configurado' };
   const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/login` : undefined;
   const { data, error } = await client.auth.signUp({
     email,
@@ -263,15 +264,21 @@ export async function signUp({ email, password, firstName, lastName, phone }) {
         first_name: firstName || null,
         last_name: lastName || null,
         phone: phone || null,
+        cpf: cpf || null,
         display_name: `${(firstName || '').trim()} ${(lastName || '').trim()}`.trim() || null,
       },
     },
   });
-  if (error) return { user: null, session: null };
+  if (error) return { user: null, session: null, error: error?.message || 'Falha ao cadastrar' };
   if (!data?.session && email && password) {
     try {
-      await client.auth.signInWithPassword({ email, password });
-    } catch {}
+      const r = await client.auth.signInWithPassword({ email, password });
+      if (r?.error) {
+        return { user: data?.user || null, session: null, error: r.error.message };
+      }
+    } catch (e) {
+      return { user: data?.user || null, session: null, error: 'Confirmação de e‑mail necessária' };
+    }
   }
   const curr = await client.auth.getUser();
   const sessionRes = await client.auth.getSession();
@@ -279,18 +286,22 @@ export async function signUp({ email, password, firstName, lastName, phone }) {
   const userId = curr?.data?.user?.id || data?.user?.id;
   if (userId && session) {
     try {
-      await client
+      const { error: upErr } = await client
         .from('users')
         .upsert({
           id: userId,
           first_name: firstName || '',
           last_name: lastName || '',
           phone: phone || '',
+          cpf: cpf || '',
         });
-    } catch {}
+      if (upErr) return { user: data?.user || null, session, error: upErr.message };
+    } catch (e) {
+      return { user: data?.user || null, session, error: 'Falha ao salvar perfil' };
+    }
   }
   const out = await client.auth.getUser();
-  return { user: out?.data?.user || data?.user || null, session };
+  return { user: out?.data?.user || data?.user || null, session, error: null };
 }
 
 export async function signOut() {
@@ -300,21 +311,23 @@ export async function signOut() {
   return true;
 }
 
-export async function updateProfile(userId, { firstName, lastName, phone }) {
+export async function updateProfile(userId, { firstName, lastName, phone, cpf }) {
   const client = getClient();
   if (!client) throw new Error('Supabase não configurado');
-  await client
+  const { error } = await client
     .from('users')
     .upsert({
       id: userId,
       first_name: firstName ?? '',
       last_name: lastName ?? '',
       phone: phone ?? '',
+      cpf: cpf ?? null,
     });
+  if (error) throw new Error(error.message);
   return true;
 }
 
-export async function updateAuth({ email, password, firstName, lastName, phone }) {
+export async function updateAuth({ email, password, firstName, lastName, phone, cpf }) {
   const client = getClient();
   if (!client) throw new Error('Supabase não configurado');
   const data = {
@@ -324,6 +337,7 @@ export async function updateAuth({ email, password, firstName, lastName, phone }
       ...(firstName ? { first_name: firstName } : {}),
       ...(lastName ? { last_name: lastName } : {}),
       ...(phone ? { phone } : {}),
+      ...(cpf ? { cpf } : {}),
       display_name: `${(firstName || '').trim()} ${(lastName || '').trim()}`.trim() || null,
     },
   };
@@ -336,8 +350,21 @@ export async function getProfile(userId) {
   if (!client) return null;
   const { data } = await client
     .from('users')
-    .select('first_name,last_name,phone')
+    .select('first_name,last_name,phone,cpf')
     .eq('id', userId)
+    .maybeSingle();
+  return data || null;
+}
+
+export async function findUserByCpf(cpf) {
+  const client = getClient();
+  if (!client) return null;
+  const digits = (cpf || '').replace(/\D+/g, '');
+  if (!digits) return null;
+  const { data } = await client
+    .from('users')
+    .select('id')
+    .eq('cpf', digits)
     .maybeSingle();
   return data || null;
 }

@@ -42,6 +42,7 @@ import {
   isSupabaseReady,
   updateProfile,
   updateAuth,
+  findUserByCpf,
 } from './db';
 
 const makeInitialForm = () => ({
@@ -106,6 +107,33 @@ const isUuid = (s) => {
   const v = (s || '').trim();
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 };
+const formatCpfBR = (s) => {
+  const d = (s || '').replace(/\D+/g, '');
+  const p1 = d.slice(0, 3);
+  const p2 = d.slice(3, 6);
+  const p3 = d.slice(6, 9);
+  const p4 = d.slice(9, 11);
+  let out = p1;
+  if (p2) out += '.' + p2;
+  if (p3) out += '.' + p3;
+  if (p4) out += '-' + p4;
+  return out;
+};
+const isValidCpf = (s) => {
+  const d = (s || '').replace(/\D+/g, '');
+  if (d.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(d)) return false;
+  const calc = (base, factor) => {
+    let sum = 0;
+    for (let i = 0; i < base.length; i++) sum += Number(base[i]) * (factor - i);
+    const rest = sum % 11;
+    return rest < 2 ? 0 : 11 - rest;
+  };
+  const d1 = calc(d.slice(0, 9), 10);
+  if (d1 !== Number(d[9])) return false;
+  const d2 = calc(d.slice(0, 10), 11);
+  return d2 === Number(d[10]);
+};
 const Section = ({ title, children, expanded, onToggle }) => (
   <View style={styles.section}>
     <Pressable onPress={onToggle} style={styles.sectionHeader}>
@@ -147,6 +175,7 @@ export default function App() {
   const [authFirstName, setAuthFirstName] = useState('');
   const [authLastName, setAuthLastName] = useState('');
   const [authPhone, setAuthPhone] = useState('');
+  const [authCpf, setAuthCpf] = useState('');
   const [showAuthPassword, setShowAuthPassword] = useState(false);
   const [userId, setUserIdState] = useState(initialUserIdWeb);
   const [userName, setUserName] = useState(null);
@@ -168,6 +197,7 @@ export default function App() {
   const [editFirstName, setEditFirstName] = useState('');
   const [editLastName, setEditLastName] = useState('');
   const [editPhone, setEditPhone] = useState('');
+  const [editCpf, setEditCpf] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editNewPassword, setEditNewPassword] = useState('');
   const [showEditPassword, setShowEditPassword] = useState(false);
@@ -190,6 +220,7 @@ export default function App() {
     setAuthFirstName('');
     setAuthLastName('');
     setAuthPhone('');
+    setAuthCpf('');
     setErrorMessage(null);
   };
 
@@ -962,7 +993,7 @@ export default function App() {
             onPress={async () => {
               if (mode === 'auth') return;
               try {
-                let firstN = '', lastN = '', phoneN = '', emailN = '';
+                let firstN = '', lastN = '', phoneN = '', emailN = '', cpfN = '';
                 const u = await getCurrentUser();
                 const uid = u?.id || userId;
                 emailN = u?.email || '';
@@ -971,11 +1002,13 @@ export default function App() {
                   firstN = p?.first_name || '';
                   lastN = p?.last_name || '';
                   phoneN = p?.phone || '';
+                  cpfN = p?.cpf || '';
                 }
                 setEditFirstName(firstN);
                 setEditLastName(lastN);
                 setEditPhone(phoneN ? formatPhoneBR(phoneN) : '');
                 setEditEmail(emailN || '');
+                setEditCpf(cpfN ? formatCpfBR(cpfN) : '');
                 setEditNewPassword('');
                 setShowEditPassword(false);
               } catch {}
@@ -1114,6 +1147,15 @@ export default function App() {
                 />
                 <TextInput
                   style={styles.input}
+                  placeholder="CPF"
+                  placeholderTextColor="#9aa0b5"
+                  value={editCpf}
+                  onChangeText={(t) => setEditCpf(formatCpfBR(t))}
+                  keyboardType="number-pad"
+                  maxLength={14}
+                />
+                <TextInput
+                  style={styles.input}
                   placeholder="E-mail"
                   placeholderTextColor="#9aa0b5"
                   value={editEmail}
@@ -1171,10 +1213,11 @@ export default function App() {
                 const firstName = (editFirstName || '').trim();
                 const lastName = (editLastName || '').trim();
                 const phoneDigits = (editPhone || '').replace(/\D+/g, '');
+                const cpfDigits = (editCpf || '').replace(/\D+/g, '');
                 const email = (editEmail || '').trim();
                 const passOk = !editNewPassword || isStrongPassword(editNewPassword);
                 const readyWeb = Platform.OS === 'web'
-                  ? !!firstName && !!lastName && phoneDigits.length === 11 && isValidEmail(email) && passOk
+                  ? !!firstName && !!lastName && phoneDigits.length === 11 && isValidEmail(email) && passOk && isValidCpf(editCpf)
                   : !!(editUserName || '').trim();
                 return (
                   <Pressable
@@ -1184,8 +1227,8 @@ export default function App() {
                       if (Platform.OS === 'web') {
                         try {
                           if (userId) {
-                            await updateProfile(userId, { firstName, lastName, phone: phoneDigits });
-                            await updateAuth({ email, password: editNewPassword || undefined, firstName, lastName, phone: phoneDigits });
+                            await updateProfile(userId, { firstName, lastName, phone: phoneDigits, cpf: cpfDigits });
+                            await updateAuth({ email, password: editNewPassword || undefined, firstName, lastName, phone: phoneDigits, cpf: cpfDigits });
                             setUserName([firstName, lastName].filter(Boolean).join(' '));
                           }
                           setEditUserModalVisible(false);
@@ -1193,7 +1236,11 @@ export default function App() {
                           setSaveModalMessage('Usuário atualizado com sucesso.');
                           setSaveModalVisible(true);
                         } catch (e) {
-                          Alert.alert('Erro', 'Falha ao salvar nome do usuário.');
+                          const msg = (e?.message || '').toLowerCase();
+                          const pretty = msg.includes('cpf') && (msg.includes('duplicate') || msg.includes('unique')) ? 'CPF já cadastrado.' : (e?.message || 'Falha ao atualizar usuário.');
+                          setBannerType('error');
+                          setSaveModalMessage(pretty);
+                          setSaveModalVisible(true);
                         }
                         return;
                       }
@@ -1264,6 +1311,15 @@ export default function App() {
                   placeholder="Telefone"
                   placeholderTextColor="#9aa0b5"
                 />
+                <TextInput
+                  style={styles.input}
+                  value={authCpf}
+                  onChangeText={(t) => setAuthCpf(formatCpfBR(t))}
+                  keyboardType="number-pad"
+                  maxLength={14}
+                  placeholder="CPF"
+                  placeholderTextColor="#9aa0b5"
+                />
               </>
             ) : null}
             <TextInput
@@ -1314,8 +1370,9 @@ export default function App() {
             {(() => {
               const email = (authEmail || '').trim();
               const phoneDigits = (authPhone || '').replace(/\D+/g, '');
+              const cpfDigitsInline = (authCpf || '').replace(/\D+/g, '');
               const loginReady = isValidEmail(email) && (authPassword || '').length >= 12;
-              const registerReady = isValidEmail(email) && (authPassword || '').length >= 12 && phoneDigits.length === 11 && !!authFirstName && !!authLastName;
+              const registerReady = isValidEmail(email) && isStrongPassword(authPassword) && phoneDigits.length === 11 && !!authFirstName && !!authLastName && cpfDigitsInline.length === 11;
               return (
             <View style={styles.row}>
               {authMode === 'login' ? (
@@ -1323,7 +1380,12 @@ export default function App() {
                   setIsAuthSubmitting(true);
                   try {
                     const email = authEmail.trim();
-                    if (!isValidEmail(email)) { return; }
+                    if (!isValidEmail(email)) {
+                      setBannerType('warn');
+                      setSaveModalMessage('E‑mail inválido.');
+                      setSaveModalVisible(true);
+                      return;
+                    }
                     try { await signOut(); } catch {}
                     const u = await signIn({ email: email, password: authPassword });
                     if (u && u.id) {
@@ -1368,16 +1430,36 @@ export default function App() {
                   setIsAuthSubmitting(true);
                   try {
                     const digits = (authPhone || '').replace(/\D+/g, '');
-                    if (!authFirstName || !authLastName || !authEmail || !authPassword || digits.length !== 11) { return; }
+                    const cpfDigits = (authCpf || '').replace(/\D+/g, '');
+                    if (!authFirstName || !authLastName || !authEmail || !authPassword || digits.length !== 11 || cpfDigits.length !== 11) {
+                      setBannerType('warn');
+                      setSaveModalMessage('Preencha todos os campos, telefone (11 dígitos) e CPF completo (11 dígitos).');
+                      setSaveModalVisible(true);
+                      return;
+                    }
                     const email = authEmail.trim();
-                    if (!isValidEmail(email)) { return; }
+                    if (!isValidEmail(email)) {
+                      setBannerType('warn');
+                      setSaveModalMessage('E‑mail inválido.');
+                      setSaveModalVisible(true);
+                      return;
+                    }
                     if (!isStrongPassword(authPassword)) {
                       setBannerType('warn');
                       setSaveModalMessage('A senha precisa ter 12+ caracteres, letra maiúscula, número e caractere especial.');
                       setSaveModalVisible(true);
                       return;
                     }
-                    const res = await signUp({ email: email, password: authPassword, firstName: authFirstName.trim(), lastName: authLastName.trim(), phone: authPhone.trim() });
+                    try {
+                      const existingCpf = await findUserByCpf(cpfDigits);
+                      if (existingCpf) {
+                        setBannerType('error');
+                        setSaveModalMessage('CPF já cadastrado.');
+                        setSaveModalVisible(true);
+                        return;
+                      }
+                    } catch {}
+                    const res = await signUp({ email: email, password: authPassword, firstName: authFirstName.trim(), lastName: authLastName.trim(), phone: authPhone.trim(), cpf: cpfDigits });
                     const u = res?.user;
                     const hasSession = !!res?.session;
                     if (hasSession && u && u.id) {
@@ -1399,13 +1481,17 @@ export default function App() {
                       setAuthMode('login');
                       setMode('auth');
                     } else {
+                      const raw = (res?.error || '').toLowerCase();
+                      const pretty = raw.includes('already') || raw.includes('exists') || raw.includes('registered') ? 'E‑mail já cadastrado.' : (res?.error || 'Não foi possível cadastrar.');
                       setBannerType('error');
-                      setSaveModalMessage('Não foi possível cadastrar.');
+                      setSaveModalMessage(pretty);
                       setSaveModalVisible(true);
                     }
                   } catch (e) {
                     setBannerType('error');
-                    setSaveModalMessage('Não foi possível cadastrar.');
+                    const raw = (e?.message || '').toLowerCase();
+                    const pretty = raw.includes('already') || raw.includes('exists') || raw.includes('registered') ? 'E‑mail já cadastrado.' : (e?.message || 'Não foi possível cadastrar.');
+                    setSaveModalMessage(pretty);
                     setSaveModalVisible(true);
                   } finally { setIsAuthSubmitting(false); }
                 }}>
