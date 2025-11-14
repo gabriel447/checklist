@@ -82,6 +82,22 @@ const formatPhoneBR = (s) => {
   if (d.length <= 10) return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`;
   return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7,11)}`;
 };
+
+const parseMapsLink = (s) => {
+  const t = String(s || '').trim();
+  if (!t) return null;
+  let m = t.match(/@(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
+  if (m) return { lat: Number(m[1]), lng: Number(m[2]) };
+  m = t.match(/[?&]q=(-?\d+\.?\d*),\s*(-?\d+\.?\d*)/);
+  if (m) return { lat: Number(m[1]), lng: Number(m[2]) };
+  const nums = t.match(/-?\d+\.\d+/g) || [];
+  const cand = nums.map(Number).filter((n) => !Number.isNaN(n));
+  for (let i = 0; i < cand.length - 1; i++) {
+    const a = cand[i], b = cand[i + 1];
+    if (a >= -90 && a <= 90 && b >= -180 && b <= 180) return { lat: a, lng: b };
+  }
+  return null;
+};
 const isStrongPassword = (s) => {
   if (!s || s.length < 12) return false;
   if (!/[A-Za-z]/.test(s)) return false;
@@ -215,6 +231,9 @@ export default function App() {
   const locClienteRef = useRef(null);
   const locCtoRef = useRef(null);
   const locCasaRef = useRef(null);
+  const [pasteModalVisible, setPasteModalVisible] = useState(false);
+  const [pasteTargetKey, setPasteTargetKey] = useState(null);
+  const [pasteText, setPasteText] = useState('');
 
   const clearAuthFields = () => {
     setAuthEmail('');
@@ -578,6 +597,40 @@ export default function App() {
       setIsLocating(false);
       setLocatingKey(null);
     }
+  };
+
+  const pasteFromMaps = async (fieldKey) => {
+    try {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.readText) {
+        const txt = await navigator.clipboard.readText();
+        const p = parseMapsLink(txt);
+        if (p && Number.isFinite(p.lat) && Number.isFinite(p.lng)) {
+          const lat = Number(p.lat).toFixed(6);
+          const lng = Number(p.lng).toFixed(6);
+          setField(fieldKey, `https://www.google.com/maps?q=${lat},${lng}`);
+          return;
+        }
+        Alert.alert('Erro', 'Não foi possível reconhecer coordenadas no texto copiado.');
+        return;
+      }
+    } catch {}
+    setPasteTargetKey(fieldKey);
+    setPasteText('');
+    setPasteModalVisible(true);
+  };
+
+  const handlePasteConfirm = () => {
+    const p = parseMapsLink(pasteText);
+    if (p && pasteTargetKey) {
+      const lat = Number(p.lat).toFixed(6);
+      const lng = Number(p.lng).toFixed(6);
+      setField(pasteTargetKey, `https://www.google.com/maps?q=${lat},${lng}`);
+      setPasteModalVisible(false);
+      setPasteTargetKey(null);
+      setPasteText('');
+      return;
+    }
+    Alert.alert('Erro', 'Cole um link ou coordenadas válidas do Google Maps.');
   };
 
   
@@ -1358,6 +1411,37 @@ export default function App() {
         </View>
       </Modal>
 
+      <Modal
+        transparent
+        visible={pasteModalVisible}
+        animationType="fade"
+        onRequestClose={() => { setPasteModalVisible(false); setPasteTargetKey(null); setPasteText(''); }}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>Colar do Maps</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Cole aqui o link do Google Maps"
+              placeholderTextColor="#9aa0b5"
+              value={pasteText}
+              onChangeText={setPasteText}
+              autoCapitalize="none"
+              autoCorrect={false}
+              spellCheck={false}
+            />
+            <View style={[styles.row, { marginTop: 12 }]}>
+              <Pressable style={[styles.btnSecondary, { flex: 1 }]} onPress={() => { setPasteModalVisible(false); setPasteTargetKey(null); setPasteText(''); }}>
+                <Text style={styles.btnSecondaryText}>Cancelar</Text>
+              </Pressable>
+              <Pressable style={[styles.btn, { flex: 1 }]} onPress={handlePasteConfirm}>
+                <Text style={styles.btnText}>Confirmar</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {saveModalVisible ? (
         <View style={styles.bannerWrap}>
           <Animated.View style={[bannerType === 'error' ? styles.bannerBoxError : bannerType === 'warn' ? styles.bannerBoxWarn : styles.bannerBoxSuccess, { opacity: bannerOpacity }]}>
@@ -1732,6 +1816,9 @@ export default function App() {
                   <Text style={[styles.btnText, isLocating && locatingKey === 'locClienteLink' ? { opacity: 0 } : null]}>Puxar Localização</Text>
                 </View>
               </Pressable>
+              <Pressable style={[styles.btnSecondary, styles.btnInline]} onPress={() => pasteFromMaps('locClienteLink')}>
+                <Text style={styles.btnSecondaryText}>Colar do Maps</Text>
+              </Pressable>
             </View>
           </Section>
 
@@ -1778,6 +1865,9 @@ export default function App() {
                   ) : null}
                   <Text style={[styles.btnText, isLocating && locatingKey === 'locCtoLink' ? { opacity: 0 } : null]}>Puxar Localização</Text>
                 </View>
+              </Pressable>
+              <Pressable style={[styles.btnSecondary, styles.btnInline]} onPress={() => pasteFromMaps('locCtoLink')}>
+                <Text style={styles.btnSecondaryText}>Colar do Maps</Text>
               </Pressable>
             </View>
 
@@ -1867,6 +1957,9 @@ export default function App() {
                   ) : null}
                   <Text style={[styles.btnText, isLocating && locatingKey === 'locCasaLink' ? { opacity: 0 } : null]}>Puxar Localização</Text>
                 </View>
+              </Pressable>
+              <Pressable style={[styles.btnSecondary, styles.btnInline]} onPress={() => pasteFromMaps('locCasaLink')}>
+                <Text style={styles.btnSecondaryText}>Colar do Maps</Text>
               </Pressable>
             </View>
 
@@ -2205,8 +2298,8 @@ const styles = StyleSheet.create({
   },
   inputInline: {
     marginBottom: 0,
-    height: Platform.OS === 'web' ? 36 : 36,
-    paddingVertical: Platform.OS === 'web' ? 6 : 6,
+    height: Platform.OS === 'web' ? 44 : 44,
+    paddingVertical: Platform.OS === 'web' ? 10 : 10,
   },
   inputDisabled: {
     opacity: 0.6,
