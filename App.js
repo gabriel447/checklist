@@ -522,9 +522,25 @@ export default function App() {
       } else {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') { return; }
-        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
-        const { latitude, longitude } = pos.coords;
-        setField(fieldKey, `https://www.google.com/maps?q=${latitude},${longitude}`);
+        let best = null;
+        let resolveFn;
+        const done = new Promise((resolve) => { resolveFn = resolve; });
+        const sub = await Location.watchPositionAsync(
+          { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 1000, distanceInterval: 0 },
+          (p) => {
+            const acc = typeof p?.coords?.accuracy === 'number' ? p.coords.accuracy : null;
+            if (!best || (acc != null && acc < (best?.coords?.accuracy ?? Infinity))) best = p;
+            if (acc != null && acc <= 20) resolveFn(p);
+          }
+        );
+        setTimeout(() => resolveFn(best), 6000);
+        const finalPos = await done;
+        try { sub?.remove(); } catch {}
+        if (finalPos?.coords?.latitude && finalPos?.coords?.longitude) {
+          const lat = Number(finalPos.coords.latitude).toFixed(6);
+          const lng = Number(finalPos.coords.longitude).toFixed(6);
+          setField(fieldKey, `https://www.google.com/maps?q=${lat},${lng}`);
+        }
       }
     } catch {}
     finally {
@@ -581,25 +597,6 @@ export default function App() {
           return;
         }
       }
-      if (!currentId) {
-        const s = (v) => (v || '').trim();
-        if (!s(form.nome)) {
-          setBannerType('warn');
-          setSaveModalMessage('Informe pelo menos o nome completo.');
-          setSaveModalVisible(true);
-          setExpanded((e) => ({ ...e, cliente: true }));
-          return;
-        }
-        const links = [form.locClienteLink, form.locCtoLink, form.locCasaLink].filter((v) => !!s(v));
-        const someInvalid = links.some((v) => !isValidUrl(v));
-        if (someInvalid) {
-          setBannerType('warn');
-          setSaveModalMessage('Links devem ser URLs válidas (http/https).');
-          setSaveModalVisible(true);
-          setExpanded((e) => ({ ...e, cliente: true, cto: true, casa: true }));
-          return;
-        }
-      }
       const prevShow = showWifiPassword;
       senhaWifiRef.current?.blur();
       await new Promise((r) => setTimeout(r, 50));
@@ -651,7 +648,11 @@ export default function App() {
       s(form.nomeWifi) &&
       s(form.senhaWifi) &&
       form.testeNavegacaoOk !== null &&
-      form.clienteSatisfeito !== null
+      form.clienteSatisfeito !== null &&
+      (form.fotoCtoDataUri || form.fotoCto) &&
+      (form.fotoFrenteCasaDataUri || form.fotoFrenteCasa) &&
+      (form.fotoInstalacaoDataUri || form.fotoInstalacao) &&
+      (form.fotoMacEquipDataUri || form.fotoMacEquip)
     );
   }, [form]);
 
@@ -747,23 +748,23 @@ export default function App() {
 
           <div class="card">
             <div class="cardHeader"><div><span class="badge">1</span><span class="cardTitle">Dados do cliente</span></div></div>
-            <div class="row"><span class="label">Nome completo:</span> ${capitalizeWords(form.nome) || ''}</div>
-            <div class="row"><span class="label">Rua e número:</span> ${form.ruaNumero || ''}</div>
-            <div class="row"><span class="label">Localização (link do Maps):</span> <span class="link">${form.locClienteLink ? `<a href="${form.locClienteLink}">${form.locClienteLink}</a>` : ''}</span></div>
+            ${form.nome ? `<div class="row"><span class="label">Nome completo:</span> ${capitalizeWords(form.nome)}</div>` : ''}
+            ${form.ruaNumero ? `<div class="row"><span class="label">Rua e número:</span> ${form.ruaNumero}</div>` : ''}
+            ${form.locClienteLink ? `<div class="row"><span class="label">Localização (link do Maps):</span> <span class="link"><a href="${form.locClienteLink}">${form.locClienteLink}</a></span></div>` : ''}
           </div>
 
           <div class="card">
             <div class="cardHeader"><div><span class="badge">2</span><span class="cardTitle">CTO / rede externa</span></div></div>
-            <div class="row"><span class="label">Localização da CTO (link do Maps):</span> <span class="link">${form.locCtoLink ? `<a href="${form.locCtoLink}">${form.locCtoLink}</a>` : ''}</span></div>
+            ${form.locCtoLink ? `<div class="row"><span class="label">Localização da CTO (link do Maps):</span> <span class="link"><a href="${form.locCtoLink}">${form.locCtoLink}</a></span></div>` : ''}
             ${imgCto ? `<div class="row"><span class="label">Foto da CTO</span></div><div class="figure"><img class="img" src="${imgCto}" alt="Foto da CTO" /></div>` : ''}
-            <div class="row"><span class="label">Cor da fibra:</span> ${form.corFibra || ''}</div>
-            <div class="row"><span class="label">Possui splitter?</span> ${yesNo(form.possuiSplitter)}</div>
-            <div class="row"><span class="label">Número da porta utilizada pelo cliente:</span> ${form.portaCliente || ''}</div>
+            ${form.corFibra ? `<div class="row"><span class="label">Cor da fibra:</span> ${form.corFibra}</div>` : ''}
+            ${form.possuiSplitter !== null ? `<div class="row"><span class="label">Possui splitter?</span> ${yesNo(form.possuiSplitter)}</div>` : ''}
+            ${form.portaCliente ? `<div class="row"><span class="label">Número da porta utilizada pelo cliente:</span> ${form.portaCliente}</div>` : ''}
           </div>
 
           <div class="card">
             <div class="cardHeader"><div><span class="badge">3</span><span class="cardTitle">Casa do cliente</span></div></div>
-            <div class="row"><span class="label">Localização da casa (link do Maps):</span> <span class="link">${form.locCasaLink ? `<a href="${form.locCasaLink}">${form.locCasaLink}</a>` : ''}</span></div>
+            ${form.locCasaLink ? `<div class="row"><span class="label">Localização da casa (link do Maps):</span> <span class="link"><a href="${form.locCasaLink}">${form.locCasaLink}</a></span></div>` : ''}
             ${imgCasa ? `<div class="row"><span class="label">Foto da frente da casa</span></div><div class="figure"><img class="img" src="${imgCasa}" alt="Foto da frente da casa" /></div>` : ''}
           </div>
 
@@ -771,14 +772,14 @@ export default function App() {
             <div class="cardHeader"><div><span class="badge">4</span><span class="cardTitle">Instalação interna</span></div></div>
             ${imgInst ? `<div class="row"><span class="label">Foto da instalação do equipamento (ONT/Router)</span></div><div class="figure"><img class="img" src="${imgInst}" alt="Foto da instalação do equipamento (ONT/Router)" /></div>` : ''}
             ${imgMac ? `<div class="row"><span class="label">Foto do MAC do equipamento</span></div><div class="figure"><img class="img" src="${imgMac}" alt="Foto do MAC do equipamento" /></div>` : ''}
-            <div class="row"><span class="label">Nome do Wi‑Fi:</span> ${form.nomeWifi || ''}</div>
-            <div class="row"><span class="label">Senha do Wi‑Fi:</span> ${form.senhaWifi || ''}</div>
+            ${form.nomeWifi ? `<div class="row"><span class="label">Nome do Wi‑Fi:</span> ${form.nomeWifi}</div>` : ''}
+            ${form.senhaWifi ? `<div class="row"><span class="label">Senha do Wi‑Fi:</span> ${form.senhaWifi}</div>` : ''}
           </div>
 
           <div class="card">
             <div class="cardHeader"><div><span class="badge">5</span><span class="cardTitle">Finalização</span></div></div>
-            <div class="row"><span class="label">Teste de navegação realizado com sucesso?</span> ${yesNo(form.testeNavegacaoOk)}</div>
-            <div class="row"><span class="label">Cliente ciente e satisfeito com o serviço?</span> ${yesNo(form.clienteSatisfeito)}</div>
+            ${form.testeNavegacaoOk !== null ? `<div class="row"><span class="label">Teste de navegação realizado com sucesso?</span> ${yesNo(form.testeNavegacaoOk)}</div>` : ''}
+            ${form.clienteSatisfeito !== null ? `<div class="row"><span class="label">Cliente ciente e satisfeito com o serviço?</span> ${yesNo(form.clienteSatisfeito)}</div>` : ''}
           </div>
         </body>
       </html>`;
@@ -925,23 +926,23 @@ export default function App() {
 
           <div class="card">
             <div class="cardHeader"><div><span class="badge">1</span><span class="cardTitle">Dados do cliente</span></div></div>
-            <div class="row"><span class="label">Nome completo:</span> ${capitalizeWords(f.nome) || ''}</div>
-            <div class="row"><span class="label">Rua e número:</span> ${f.ruaNumero || ''}</div>
-            <div class="row"><span class="label">Localização (link do Maps):</span> <span class="link">${f.locClienteLink ? `<a href="${f.locClienteLink}">${f.locClienteLink}</a>` : ''}</span></div>
+            ${f.nome ? `<div class="row"><span class="label">Nome completo:</span> ${capitalizeWords(f.nome)}</div>` : ''}
+            ${f.ruaNumero ? `<div class="row"><span class="label">Rua e número:</span> ${f.ruaNumero}</div>` : ''}
+            ${f.locClienteLink ? `<div class="row"><span class="label">Localização (link do Maps):</span> <span class="link"><a href="${f.locClienteLink}">${f.locClienteLink}</a></span></div>` : ''}
           </div>
 
           <div class="card">
             <div class="cardHeader"><div><span class="badge">2</span><span class="cardTitle">CTO / rede externa</span></div></div>
-            <div class="row"><span class="label">Localização da CTO (link do Maps):</span> <span class="link">${f.locCtoLink ? `<a href="${f.locCtoLink}">${f.locCtoLink}</a>` : ''}</span></div>
+            ${f.locCtoLink ? `<div class="row"><span class="label">Localização da CTO (link do Maps):</span> <span class="link"><a href="${f.locCtoLink}">${f.locCtoLink}</a></span></div>` : ''}
             ${imgCto ? `<div class="row"><span class="label">Foto da CTO</span></div><div class="figure"><img class="img" src="${imgCto}" alt="Foto da CTO" /></div>` : ''}
-            <div class="row"><span class="label">Cor da fibra:</span> ${f.corFibra || ''}</div>
-            <div class="row"><span class="label">Possui splitter?</span> ${yesNo(f.possuiSplitter)}</div>
-            <div class="row"><span class="label">Número da porta utilizada pelo cliente:</span> ${f.portaCliente || ''}</div>
+            ${f.corFibra ? `<div class="row"><span class="label">Cor da fibra:</span> ${f.corFibra}</div>` : ''}
+            ${f.possuiSplitter !== null ? `<div class="row"><span class="label">Possui splitter?</span> ${yesNo(f.possuiSplitter)}</div>` : ''}
+            ${f.portaCliente ? `<div class="row"><span class="label">Número da porta utilizada pelo cliente:</span> ${f.portaCliente}</div>` : ''}
           </div>
 
           <div class="card">
             <div class="cardHeader"><div><span class="badge">3</span><span class="cardTitle">Casa do cliente</span></div></div>
-            <div class="row"><span class="label">Localização da casa (link do Maps):</span> <span class="link">${f.locCasaLink ? `<a href="${f.locCasaLink}">${f.locCasaLink}</a>` : ''}</span></div>
+            ${f.locCasaLink ? `<div class="row"><span class="label">Localização da casa (link do Maps):</span> <span class="link"><a href="${f.locCasaLink}">${f.locCasaLink}</a></span></div>` : ''}
             ${imgCasa ? `<div class="row"><span class="label">Foto da frente da casa</span></div><div class="figure"><img class="img" src="${imgCasa}" alt="Foto da frente da casa" /></div>` : ''}
           </div>
 
@@ -949,14 +950,14 @@ export default function App() {
             <div class="cardHeader"><div><span class="badge">4</span><span class="cardTitle">Instalação interna</span></div></div>
             ${imgInst ? `<div class="row"><span class="label">Foto da instalação do equipamento (ONT/Router)</span></div><div class="figure"><img class="img" src="${imgInst}" alt="Foto da instalação do equipamento (ONT/Router)" /></div>` : ''}
             ${imgMac ? `<div class="row"><span class="label">Foto do MAC do equipamento</span></div><div class="figure"><img class="img" src="${imgMac}" alt="Foto do MAC do equipamento" /></div>` : ''}
-            <div class="row"><span class="label">Nome do Wi‑Fi:</span> ${f.nomeWifi || ''}</div>
-            <div class="row"><span class="label">Senha do Wi‑Fi:</span> ${f.senhaWifi || ''}</div>
+            ${f.nomeWifi ? `<div class="row"><span class="label">Nome do Wi‑Fi:</span> ${f.nomeWifi}</div>` : ''}
+            ${f.senhaWifi ? `<div class="row"><span class="label">Senha do Wi‑Fi:</span> ${f.senhaWifi}</div>` : ''}
           </div>
 
           <div class="card">
             <div class="cardHeader"><div><span class="badge">5</span><span class="cardTitle">Finalização</span></div></div>
-            <div class="row"><span class="label">Teste de navegação realizado com sucesso?</span> ${yesNo(f.testeNavegacaoOk)}</div>
-            <div class="row"><span class="label">Cliente ciente e satisfeito com o serviço?</span> ${yesNo(f.clienteSatisfeito)}</div>
+            ${f.testeNavegacaoOk !== null ? `<div class="row"><span class="label">Teste de navegação realizado com sucesso?</span> ${yesNo(f.testeNavegacaoOk)}</div>` : ''}
+            ${f.clienteSatisfeito !== null ? `<div class="row"><span class="label">Cliente ciente e satisfeito com o serviço?</span> ${yesNo(f.clienteSatisfeito)}</div>` : ''}
           </div>
         </body>
       </html>`;
@@ -1068,6 +1069,7 @@ export default function App() {
   const actionLabel = currentId ? 'Salvar Alterações' : 'Criar Checklist';
   const wantsAuthRoute = Platform.OS === 'web' && (route === '/login' || route === '/cadastrar');
   const effectiveMode = Platform.OS === 'web' && (!userId || wantsAuthRoute) ? 'auth' : mode;
+  const canSubmit = currentId ? true : createReady;
 
   const Header = () => (
     <View style={styles.header}>
@@ -1918,10 +1920,10 @@ export default function App() {
               style={[
                 styles.btn,
                 { flex: 1 },
-                isSaving && styles.btnDisabled,
+                (isSaving || !canSubmit) && styles.btnDisabled,
               ]}
               onPress={onSave}
-              disabled={isSaving}
+              disabled={isSaving || !canSubmit}
             >
               {isSaving ? (
                 <ActivityIndicator size="small" color="#fff" />
@@ -1931,7 +1933,7 @@ export default function App() {
             </Pressable>
           </View>
 
-          {currentId ? (
+          {hasChanges ? (
             <Pressable
               style={[styles.btnSecondary, { marginTop: 8 }]}
               onPress={() => {
@@ -1946,7 +1948,7 @@ export default function App() {
                 }
               }}
             >
-              <Text style={styles.btnSecondaryText}>Novo Checklist</Text>
+              <Text style={styles.btnSecondaryText}>Limpar Campos</Text>
             </Pressable>
           ) : null}
 
