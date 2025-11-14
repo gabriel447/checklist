@@ -210,6 +210,8 @@ export default function App() {
   const [isNavigatingList, setIsNavigatingList] = useState(false);
   const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportingId, setExportingId] = useState(null);
   const locClienteRef = useRef(null);
   const locCtoRef = useRef(null);
   const locCasaRef = useRef(null);
@@ -775,6 +777,8 @@ export default function App() {
 
   const onExportPdfItem = async (id) => {
     try {
+      setIsExporting(true);
+      setExportingId(id);
       const row = await getChecklist(id, userId);
       if (!row) return;
 
@@ -894,6 +898,9 @@ export default function App() {
     } catch (e) {
       console.error(e);
       Alert.alert('Erro', 'Falha ao gerar/compartilhar PDF do item.');
+    } finally {
+      setIsExporting(false);
+      setExportingId(null);
     }
   };
 
@@ -1506,8 +1513,13 @@ export default function App() {
                         <Text style={styles.listItemTitle} numberOfLines={2} ellipsizeMode="tail">{it.nome || 'Sem nome'}</Text>
                         <Text style={styles.listItemSub}>{new Date(it.created_at).toLocaleDateString('pt-BR')} • {new Date(it.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</Text>
                       </Pressable>
-                      <Pressable style={styles.btnSecondary} onPress={() => onExportPdfItem(it.id)}>
-                        <Text style={styles.btnSecondaryText}>Exportar</Text>
+                      <Pressable style={styles.btnSecondary} disabled={isExporting && exportingId === it.id} onPress={() => onExportPdfItem(it.id)}>
+                        <View style={{ justifyContent: 'center', alignItems: 'center' }}>
+                          {isExporting && exportingId === it.id ? (
+                            <ActivityIndicator color="#2f6fed" style={{ position: 'absolute' }} />
+                          ) : null}
+                          <Text style={[styles.btnSecondaryText, isExporting && exportingId === it.id ? { opacity: 0 } : null]}>Exportar</Text>
+                        </View>
                       </Pressable>
                       <Pressable style={styles.delBtn} onPress={() => onDeleteRequest(it.id)}>
                         <Text style={styles.delBtnText}>Deletar</Text>
