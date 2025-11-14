@@ -1339,6 +1339,7 @@ export default function App() {
                     styles.inputInline,
                     { flex: 1 },
                     form.locClienteLink ? styles.inputLinkReady : null,
+                    Platform.OS === 'web' && form.locClienteLink ? styles.pointerCursor : null,
                   ]}
                   placeholder="https://www.google.com/maps?..."
                   placeholderTextColor="#9aa0b5"
@@ -1385,6 +1386,7 @@ export default function App() {
                     styles.inputInline,
                     { flex: 1 },
                     form.locCtoLink ? styles.inputLinkReady : null,
+                    Platform.OS === 'web' && form.locCtoLink ? styles.pointerCursor : null,
                   ]}
                   placeholder="https://www.google.com/maps?..."
                   placeholderTextColor="#9aa0b5"
@@ -1473,6 +1475,7 @@ export default function App() {
                     styles.inputInline,
                     { flex: 1 },
                     form.locCasaLink ? styles.inputLinkReady : null,
+                    Platform.OS === 'web' && form.locCasaLink ? styles.pointerCursor : null,
                   ]}
                   placeholder="https://www.google.com/maps?..."
                   placeholderTextColor="#9aa0b5"
@@ -1788,6 +1791,7 @@ const styles = StyleSheet.create({
     color: '#1e40af',
     fontWeight: '600',
   },
+  pointerCursor: Platform.OS === 'web' ? { cursor: 'pointer' } : {},
   row: {
     flexDirection: 'row',
     alignItems: 'center',
