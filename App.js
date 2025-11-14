@@ -91,6 +91,7 @@ const isValidEmail = (s) => {
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e);
 };
 
+
 const Section = ({ title, children, expanded, onToggle }) => (
   <View style={styles.section}>
     <Pressable onPress={onToggle} style={styles.sectionHeader}>
@@ -402,144 +403,40 @@ export default function App() {
     setLocatingKey(fieldKey);
     try {
       if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.geolocation) {
-        if (typeof window !== 'undefined' && window.isSecureContext === false) {
-          Alert.alert('Permissão', 'Ative HTTPS ou use um túnel seguro para permitir localização.');
-        }
         try {
-          const opts = { enableHighAccuracy: true, timeout: 45000, maximumAge: 0 };
+          const opts = { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 };
           const pos = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, opts));
-          let { latitude, longitude, accuracy } = pos.coords;
-          try {
-            const accNum = typeof accuracy === 'number' ? accuracy : null;
-            if (accNum === null || accNum > 20) {
-              const better = await new Promise((resolve) => {
-                let best = null;
-                const id = navigator.geolocation.watchPosition(
-                  (p) => {
-                    const a = p && p.coords && typeof p.coords.accuracy === 'number' ? p.coords.accuracy : null;
-                    if (!best || (a !== null && a < (best?.coords?.accuracy ?? Infinity))) { best = p; }
-                    if (a !== null && a <= 10) { navigator.geolocation.clearWatch(id); resolve(p); }
-                  },
-                  () => {},
-                  { enableHighAccuracy: true, maximumAge: 0 }
-                );
-                setTimeout(() => { navigator.geolocation.clearWatch(id); resolve(best); }, 12000);
-              });
-              if (better && better.coords) { latitude = better.coords.latitude; longitude = better.coords.longitude; }
-            }
-          } catch {}
-          const link = `https://www.google.com/maps?q=${latitude},${longitude}`;
-          setField(fieldKey, link);
+          const { latitude, longitude } = pos.coords;
+          setField(fieldKey, `https://www.google.com/maps?q=${latitude},${longitude}`);
           return;
-        } catch (e) {
-          if (e && e.code === 3) {
-            try {
-              const opts = { enableHighAccuracy: true, maximumAge: 60000 };
-              const pos = await new Promise((resolve, reject) => {
-                const id = navigator.geolocation.watchPosition(
-                  (p) => { navigator.geolocation.clearWatch(id); resolve(p); },
-                  (err) => { navigator.geolocation.clearWatch(id); reject(err); },
-                  opts
-                );
-                setTimeout(() => { navigator.geolocation.clearWatch(id); reject({ code: 3 }); }, 20000);
-              });
-              const { latitude, longitude } = pos.coords;
-              const link = `https://www.google.com/maps?q=${latitude},${longitude}`;
-              setField(fieldKey, link);
-              return;
-            } catch {}
-          }
-          const msg = e && e.code === 1
-            ? 'Permissão de localização negada no navegador.'
-            : e && e.code === 2
-            ? 'Localização indisponível no navegador.'
-            : 'Tempo excedido ou erro ao obter localização no navegador.';
-          Alert.alert('Permissão', msg);
-          try {
-            const opts2 = { enableHighAccuracy: false, timeout: 20000, maximumAge: 120000 };
-            const pos2 = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, opts2));
-            const { latitude, longitude } = pos2.coords;
-            const link = `https://www.google.com/maps?q=${latitude},${longitude}`;
-            setField(fieldKey, link);
-            return;
-          } catch {}
-          try {
-            const ctrl2 = new AbortController();
-            const to2 = setTimeout(() => ctrl2.abort(), 4000);
-            const resp2 = await fetch('https://ipinfo.io/json', { signal: ctrl2.signal });
-            clearTimeout(to2);
-            if (resp2 && resp2.ok) {
-              const j2 = await resp2.json();
-              if (j2 && j2.loc && typeof j2.loc === 'string') {
-                const parts = j2.loc.split(',');
-                if (parts.length === 2) {
-                  const lat = parts[0];
-                  const lng = parts[1];
-                  const link = `https://www.google.com/maps?q=${lat},${lng}`;
-                  setField(fieldKey, link);
-                  return;
-                }
-              }
-            }
-          } catch {}
-          try {
-            const ctrl = new AbortController();
-            const to = setTimeout(() => ctrl.abort(), 4000);
-            const resp = await fetch('https://ipapi.co/json/', { signal: ctrl.signal });
-            clearTimeout(to);
-            if (resp && resp.ok) {
-              const j = await resp.json();
-              if (j && j.latitude && j.longitude) {
-                const link = `https://www.google.com/maps?q=${j.latitude},${j.longitude}`;
-                setField(fieldKey, link);
+        } catch {}
+        try {
+          const ctrl = new AbortController();
+          const to = setTimeout(() => ctrl.abort(), 3000);
+          const resp = await fetch('https://ipinfo.io/json', { signal: ctrl.signal });
+          clearTimeout(to);
+          if (resp && resp.ok) {
+            const j = await resp.json();
+            if (j && j.loc && typeof j.loc === 'string') {
+              const parts = j.loc.split(',');
+              if (parts.length === 2) {
+                const lat = parts[0];
+                const lng = parts[1];
+                setField(fieldKey, `https://www.google.com/maps?q=${lat},${lng}`);
                 return;
               }
             }
-          } catch {}
-          
-        }
-      } else {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
-          setBannerType('error');
-          setSaveModalMessage('Permissão de localização negada.');
-          setSaveModalVisible(true);
-          return;
-        }
-        let pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.BestForNavigation, timeout: 45000, maximumAge: 0 });
-        try {
-          const accNum = pos && pos.coords && typeof pos.coords.accuracy === 'number' ? pos.coords.accuracy : null;
-          if (accNum === null || accNum > 15) {
-            const better = await new Promise(async (resolve) => {
-              let best = null;
-              const sub = await Location.watchPositionAsync(
-                { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 1000, distanceInterval: 1 },
-                (p) => {
-                  const a = p && p.coords && typeof p.coords.accuracy === 'number' ? p.coords.accuracy : null;
-                  if (!best || (a !== null && a < (best?.coords?.accuracy ?? Infinity))) { best = p; }
-                  if (a !== null && a <= 10) { try { sub.remove(); } catch {} resolve(p); }
-                }
-              );
-              setTimeout(() => { try { sub.remove(); } catch {} resolve(best); }, 10000);
-            });
-            if (better && better.coords) { pos = better; }
           }
         } catch {}
+      } else {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') { return; }
+        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
         const { latitude, longitude } = pos.coords;
-        const link = `https://www.google.com/maps?q=${latitude},${longitude}`;
-        setField(fieldKey, link);
+        setField(fieldKey, `https://www.google.com/maps?q=${latitude},${longitude}`);
       }
-    } catch (e) {
-      const msg = (() => {
-        const m = String(e && e.message ? e.message : '');
-        if (/secure/i.test(m)) return 'Falha ao obter localização (origem não segura).';
-        if (/denied/i.test(m)) return 'Falha ao obter localização (permissão negada).';
-        return 'Falha ao obter localização.';
-      })();
-      setBannerType('error');
-      setSaveModalMessage(msg);
-      setSaveModalVisible(true);
-    } finally {
+    } catch {}
+    finally {
       setIsLocating(false);
       setLocatingKey(null);
     }
