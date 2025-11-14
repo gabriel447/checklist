@@ -406,9 +406,28 @@ export default function App() {
           Alert.alert('Permissão', 'Ative HTTPS ou use um túnel seguro para permitir localização.');
         }
         try {
-          const opts = { enableHighAccuracy: true, timeout: 30000, maximumAge: 60000 };
+          const opts = { enableHighAccuracy: true, timeout: 45000, maximumAge: 0 };
           const pos = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, opts));
-          const { latitude, longitude } = pos.coords;
+          let { latitude, longitude, accuracy } = pos.coords;
+          try {
+            const accNum = typeof accuracy === 'number' ? accuracy : null;
+            if (accNum === null || accNum > 20) {
+              const better = await new Promise((resolve) => {
+                let best = null;
+                const id = navigator.geolocation.watchPosition(
+                  (p) => {
+                    const a = p && p.coords && typeof p.coords.accuracy === 'number' ? p.coords.accuracy : null;
+                    if (!best || (a !== null && a < (best?.coords?.accuracy ?? Infinity))) { best = p; }
+                    if (a !== null && a <= 10) { navigator.geolocation.clearWatch(id); resolve(p); }
+                  },
+                  () => {},
+                  { enableHighAccuracy: true, maximumAge: 0 }
+                );
+                setTimeout(() => { navigator.geolocation.clearWatch(id); resolve(best); }, 12000);
+              });
+              if (better && better.coords) { latitude = better.coords.latitude; longitude = better.coords.longitude; }
+            }
+          } catch {}
           const link = `https://www.google.com/maps?q=${latitude},${longitude}`;
           setField(fieldKey, link);
           return;
@@ -487,7 +506,25 @@ export default function App() {
           setSaveModalVisible(true);
           return;
         }
-        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        let pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.BestForNavigation, timeout: 45000, maximumAge: 0 });
+        try {
+          const accNum = pos && pos.coords && typeof pos.coords.accuracy === 'number' ? pos.coords.accuracy : null;
+          if (accNum === null || accNum > 15) {
+            const better = await new Promise(async (resolve) => {
+              let best = null;
+              const sub = await Location.watchPositionAsync(
+                { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 1000, distanceInterval: 1 },
+                (p) => {
+                  const a = p && p.coords && typeof p.coords.accuracy === 'number' ? p.coords.accuracy : null;
+                  if (!best || (a !== null && a < (best?.coords?.accuracy ?? Infinity))) { best = p; }
+                  if (a !== null && a <= 10) { try { sub.remove(); } catch {} resolve(p); }
+                }
+              );
+              setTimeout(() => { try { sub.remove(); } catch {} resolve(best); }, 10000);
+            });
+            if (better && better.coords) { pos = better; }
+          }
+        } catch {}
         const { latitude, longitude } = pos.coords;
         const link = `https://www.google.com/maps?q=${latitude},${longitude}`;
         setField(fieldKey, link);
