@@ -369,6 +369,37 @@ export default function App() {
     setList(rows);
   };
 
+  const compressDataUri = async (dataUri, maxW = 1280, maxH = 1280, quality = 0.5) => {
+    try {
+      if (!dataUri) return null;
+      if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
+        return dataUri;
+      }
+      const img = new Image();
+      const loaded = await new Promise((resolve, reject) => {
+        img.onload = () => resolve(true);
+        img.onerror = (e) => reject(e);
+        img.src = dataUri;
+      });
+      if (!loaded) return dataUri;
+      const w = img.naturalWidth || img.width;
+      const h = img.naturalHeight || img.height;
+      if (!w || !h) return dataUri;
+      const ratio = Math.min(maxW / w, maxH / h, 1);
+      const tw = Math.round(w * ratio);
+      const th = Math.round(h * ratio);
+      const canvas = document.createElement('canvas');
+      canvas.width = tw;
+      canvas.height = th;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, tw, th);
+      const out = canvas.toDataURL('image/jpeg', quality);
+      return out || dataUri;
+    } catch {
+      return dataUri;
+    }
+  };
+
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
   const askCameraAndPick = async (fieldKey) => {
@@ -408,10 +439,14 @@ export default function App() {
         fotoMacEquip: 'fotoMacEquipDataUri',
       };
       const dataKey = dataUriKeyMap[fieldKey];
+      let dataUri = b64 ? `data:${mime};base64,${b64}` : null;
+      if (dataKey && dataUri) {
+        dataUri = await compressDataUri(dataUri, 1280, 1280, 0.5);
+      }
       setForm((prev) => ({
         ...prev,
         [fieldKey]: uri,
-        ...(dataKey && b64 ? { [dataKey]: `data:${mime};base64,${b64}` } : {}),
+        ...(dataKey && dataUri ? { [dataKey]: dataUri } : {}),
       }));
     }
   };
@@ -534,12 +569,14 @@ export default function App() {
         }
         setCurrentId(id);
         setOriginalForm(form);
+        setBannerType('success');
         setSaveModalMessage('Checklist criado com sucesso.');
         setSaveModalVisible(true);
         resetUIForNew();
       } else {
         await updateChecklist(currentId, form, userId);
         setOriginalForm(form);
+        setBannerType('success');
         setSaveModalMessage('Checklist atualizado com sucesso.');
         setSaveModalVisible(true);
       }
@@ -596,6 +633,7 @@ export default function App() {
 
       const dataOrRead = async (dataUri, uri) => {
         if (dataUri) return dataUri;
+        if (uri && /^https?:\/\//.test(uri)) return uri;
         return await toBase64(uri);
       };
 
@@ -718,6 +756,7 @@ export default function App() {
 
       const dataOrRead = async (dataUri, uri) => {
         if (dataUri) return dataUri;
+        if (uri && /^https?:\/\//.test(uri)) return uri;
         return await toBase64(uri);
       };
 
@@ -875,12 +914,13 @@ export default function App() {
       if (confirmDeleteId != null) {
         await deleteChecklist(confirmDeleteId, userId);
         await refreshList();
-        if (confirmDeleteId === currentId) {
-          resetForm();
-        }
-        setSaveModalMessage('Checklist deletado com sucesso.');
-        setSaveModalVisible(true);
+      if (confirmDeleteId === currentId) {
+        resetForm();
       }
+      setBannerType('error');
+      setSaveModalMessage('Checklist deletado com sucesso.');
+      setSaveModalVisible(true);
+    }
     } finally {
       setDeleteModalVisible(false);
       setConfirmDeleteId(null);
@@ -1557,9 +1597,9 @@ export default function App() {
             </View>
 
             <Text style={styles.label}>📸 Foto da CTO</Text>
-            {form.fotoCto ? (
+            {form.fotoCto || form.fotoCtoDataUri ? (
               <View style={styles.imageWrapper}>
-                <Image source={{ uri: form.fotoCto }} style={styles.image} />
+                <Image source={{ uri: form.fotoCto || form.fotoCtoDataUri }} style={styles.image} />
                 <Pressable style={styles.closeBadge} onPress={() => setForm({ ...form, fotoCto: null, fotoCtoDataUri: null })}>
                   <Text style={styles.closeBadgeText}>×</Text>
                 </Pressable>
@@ -1646,9 +1686,9 @@ export default function App() {
             </View>
 
             <Text style={styles.label}>🏘 Foto da frente da casa</Text>
-            {form.fotoFrenteCasa ? (
+            {form.fotoFrenteCasa || form.fotoFrenteCasaDataUri ? (
               <View style={styles.imageWrapper}>
-                <Image source={{ uri: form.fotoFrenteCasa }} style={styles.image} />
+                <Image source={{ uri: form.fotoFrenteCasa || form.fotoFrenteCasaDataUri }} style={styles.image} />
                 <Pressable style={styles.closeBadge} onPress={() => setForm({ ...form, fotoFrenteCasa: null, fotoFrenteCasaDataUri: null })}>
                   <Text style={styles.closeBadgeText}>×</Text>
                 </Pressable>
@@ -1666,9 +1706,9 @@ export default function App() {
             onToggle={() => setExpanded((e) => ({ ...e, interna: !e.interna }))}
           >
             <Text style={styles.label}>🧰 Foto da instalação do equipamento (ONT/Router)</Text>
-            {form.fotoInstalacao ? (
+            {form.fotoInstalacao || form.fotoInstalacaoDataUri ? (
               <View style={styles.imageWrapper}>
-                <Image source={{ uri: form.fotoInstalacao }} style={styles.image} />
+                <Image source={{ uri: form.fotoInstalacao || form.fotoInstalacaoDataUri }} style={styles.image} />
                 <Pressable style={styles.closeBadge} onPress={() => setForm({ ...form, fotoInstalacao: null, fotoInstalacaoDataUri: null })}>
                   <Text style={styles.closeBadgeText}>×</Text>
                 </Pressable>
@@ -1679,9 +1719,9 @@ export default function App() {
             </Pressable>
 
             <Text style={styles.label}>🏷 Foto do MAC do equipamento</Text>
-            {form.fotoMacEquip ? (
+            {form.fotoMacEquip || form.fotoMacEquipDataUri ? (
               <View style={styles.imageWrapper}>
-                <Image source={{ uri: form.fotoMacEquip }} style={styles.image} />
+                <Image source={{ uri: form.fotoMacEquip || form.fotoMacEquipDataUri }} style={styles.image} />
                 <Pressable style={styles.closeBadge} onPress={() => setForm({ ...form, fotoMacEquip: null, fotoMacEquipDataUri: null })}>
                   <Text style={styles.closeBadgeText}>×</Text>
                 </Pressable>

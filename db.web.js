@@ -29,6 +29,37 @@ export async function setUserId() {
 
 const toIntBool = (v) => (v === true ? 1 : v === false ? 0 : null);
 
+const BUCKET = 'checklists';
+const dataUriToBlob = (dataUri) => {
+  if (!dataUri || typeof dataUri !== 'string') return null;
+  const parts = dataUri.split(',');
+  if (parts.length !== 2) return null;
+  const meta = parts[0];
+  const base64 = parts[1];
+  const contentTypeMatch = /data:(.*);base64/.exec(meta);
+  const contentType = contentTypeMatch ? contentTypeMatch[1] : 'image/jpeg';
+  const binaryString = typeof atob === 'function' ? atob(base64) : Buffer.from(base64, 'base64').toString('binary');
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
+  return new Blob([bytes], { type: contentType });
+};
+
+async function uploadDataUri(dataUri, userId, nameHint) {
+  const client = getClient();
+  if (!client || !dataUri || !userId) return null;
+  const blob = dataUriToBlob(dataUri);
+  if (!blob) return null;
+  const ext = blob.type === 'image/png' ? 'png' : 'jpg';
+  const ts = Date.now();
+  const rand = Math.floor(Math.random() * 1e9);
+  const path = `${userId}/${ts}_${rand}_${nameHint}.${ext}`;
+  const { error } = await client.storage.from(BUCKET).upload(path, blob, { contentType: blob.type, upsert: true });
+  if (error) return null;
+  const { data } = client.storage.from(BUCKET).getPublicUrl(path);
+  return data?.publicUrl || null;
+}
+
 export async function listChecklists(userId) {
   const client = getClient();
   if (!client) return [];
@@ -66,18 +97,14 @@ export async function saveChecklist(data, userId) {
     ruaNumero: data.ruaNumero || '',
     locClienteLink: data.locClienteLink || '',
     locCtoLink: data.locCtoLink || '',
-    fotocto: data.fotoCto || null,
-    fotoctodatauri: data.fotoCtoDataUri || null,
+    fotocto: null,
     corfibra: data.corFibra || '',
     possuisplitter: toIntBool(data.possuiSplitter),
     portaCliente: data.portaCliente || '',
     locCasaLink: data.locCasaLink || '',
-    fotofrentecasa: data.fotoFrenteCasa || null,
-    fotofrentecasadatauri: data.fotoFrenteCasaDataUri || null,
-    fotoinstalacao: data.fotoInstalacao || null,
-    fotoinstalacaodatauri: data.fotoInstalacaoDataUri || null,
-    fotomacequip: data.fotoMacEquip || null,
-    fotomacequipdatauri: data.fotoMacEquipDataUri || null,
+    fotofrentecasa: null,
+    fotoinstalacao: null,
+    fotomacequip: null,
     nomewifi: data.nomeWifi || '',
     senhawifi: data.senhaWifi || '',
     testenavegacaook: toIntBool(data.testeNavegacaoOk),
@@ -89,7 +116,23 @@ export async function saveChecklist(data, userId) {
     .select('id')
     .single();
   if (error) throw error;
-  return inserted?.id;
+  const newId = inserted?.id;
+  if (!newId) return null;
+  const setColumn = async (col, value) => {
+    if (!value) return;
+    await client
+      .from('checklists')
+      .update({ [col]: value })
+      .eq('id', newId)
+      .eq('user_id', userId);
+  };
+  try {
+    await setColumn('fotoctodatauri', data.fotoCtoDataUri || null);
+    await setColumn('fotofrentecasadatauri', data.fotoFrenteCasaDataUri || null);
+    await setColumn('fotoinstalacaodatauri', data.fotoInstalacaoDataUri || null);
+    await setColumn('fotomacequipdatauri', data.fotoMacEquipDataUri || null);
+  } catch {}
+  return newId;
 }
 
 export async function updateChecklist(id, data, userId) {
@@ -103,18 +146,14 @@ export async function updateChecklist(id, data, userId) {
     ruaNumero: data.ruaNumero || '',
     locClienteLink: data.locClienteLink || '',
     locCtoLink: data.locCtoLink || '',
-    fotocto: data.fotoCto || null,
-    fotoctodatauri: data.fotoCtoDataUri || null,
+    fotocto: null,
     corfibra: data.corFibra || '',
     possuisplitter: toIntBool(data.possuiSplitter),
     portaCliente: data.portaCliente || '',
     locCasaLink: data.locCasaLink || '',
-    fotofrentecasa: data.fotoFrenteCasa || null,
-    fotofrentecasadatauri: data.fotoFrenteCasaDataUri || null,
-    fotoinstalacao: data.fotoInstalacao || null,
-    fotoinstalacaodatauri: data.fotoInstalacaoDataUri || null,
-    fotomacequip: data.fotoMacEquip || null,
-    fotomacequipdatauri: data.fotoMacEquipDataUri || null,
+    fotofrentecasa: null,
+    fotoinstalacao: null,
+    fotomacequip: null,
     nomewifi: data.nomeWifi || '',
     senhawifi: data.senhaWifi || '',
     testenavegacaook: toIntBool(data.testeNavegacaoOk),
@@ -126,6 +165,20 @@ export async function updateChecklist(id, data, userId) {
     .eq('id', id)
     .eq('user_id', userId);
   if (error) throw error;
+  const setColumn = async (col, value) => {
+    if (value == null) return;
+    await client
+      .from('checklists')
+      .update({ [col]: value })
+      .eq('id', id)
+      .eq('user_id', userId);
+  };
+  try {
+    await setColumn('fotoctodatauri', data.fotoCtoDataUri ?? null);
+    await setColumn('fotofrentecasadatauri', data.fotoFrenteCasaDataUri ?? null);
+    await setColumn('fotoinstalacaodatauri', data.fotoInstalacaoDataUri ?? null);
+    await setColumn('fotomacequipdatauri', data.fotoMacEquipDataUri ?? null);
+  } catch {}
   return true;
 }
 
