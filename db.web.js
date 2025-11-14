@@ -207,6 +207,37 @@ export async function signOut() {
   return true;
 }
 
+export async function updateProfile(userId, { firstName, lastName, phone }) {
+  const client = getClient();
+  if (!client) throw new Error('Supabase não configurado');
+  await client
+    .from('users')
+    .upsert({
+      id: userId,
+      first_name: firstName ?? '',
+      last_name: lastName ?? '',
+      phone: phone ?? '',
+    });
+  return true;
+}
+
+export async function updateAuth({ email, password, firstName, lastName, phone }) {
+  const client = getClient();
+  if (!client) throw new Error('Supabase não configurado');
+  const data = {
+    ...(email ? { email } : {}),
+    ...(password ? { password } : {}),
+    data: {
+      ...(firstName ? { first_name: firstName } : {}),
+      ...(lastName ? { last_name: lastName } : {}),
+      ...(phone ? { phone } : {}),
+      display_name: `${(firstName || '').trim()} ${(lastName || '').trim()}`.trim() || null,
+    },
+  };
+  await client.auth.updateUser(data);
+  return true;
+}
+
 export async function getProfile(userId) {
   const client = getClient();
   if (!client) return null;

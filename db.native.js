@@ -181,3 +181,11 @@ export async function signUp() {
 export async function signOut() {
   return true;
 }
+
+export async function updateProfile(userId, { firstName, lastName, phone }) {
+  return true;
+}
+
+export async function updateAuth() {
+  return true;
+}

@@ -22,7 +22,7 @@ import * as Location from 'expo-location';
 import * as Print from 'expo-print';
   import * as FileSystem from 'expo-file-system';
   import { shareAsync } from 'expo-sharing';
-  import { Feather } from '@expo/vector-icons';
+  import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
   import {
     initDB,
     getOrCreateUserId,
@@ -38,6 +38,8 @@ import * as Print from 'expo-print';
   signOut,
   getProfile,
   isSupabaseReady,
+  updateProfile,
+  updateAuth,
 } from './db';
 
 const makeInitialForm = () => ({
@@ -152,6 +154,12 @@ export default function App() {
   const [bannerType, setBannerType] = useState('success');
   const [editUserModalVisible, setEditUserModalVisible] = useState(false);
   const [editUserName, setEditUserName] = useState('');
+  const [editFirstName, setEditFirstName] = useState('');
+  const [editLastName, setEditLastName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editNewPassword, setEditNewPassword] = useState('');
+  const [showEditPassword, setShowEditPassword] = useState(false);
   const [showWifiPassword, setShowWifiPassword] = useState(false);
   const senhaWifiRef = useRef(null);
   const bannerOpacity = useRef(new Animated.Value(0)).current;
@@ -833,12 +841,42 @@ export default function App() {
   const Header = () => (
     <View style={styles.header}>
       <View style={styles.headerInner}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
-          <Text style={[styles.headerTitle, styles.headerLabel]}>Usuário:</Text>
-          <Pressable style={{ flexShrink: 1, minWidth: 0 }} onPress={() => { if (mode !== 'auth') { setEditUserName(userId || ''); setEditUserModalVisible(true); } }}>
-            <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">{userName || userId || '—'}</Text>
+        {Platform.OS === 'web' ? (
+          <Pressable
+            style={[styles.headerIconBtn, styles.pointerCursor]}
+            onPress={async () => {
+              if (mode === 'auth') return;
+              try {
+                let firstN = '', lastN = '', phoneN = '', emailN = '';
+                const u = await getCurrentUser();
+                const uid = u?.id || userId;
+                emailN = u?.email || '';
+                if (uid) {
+                  const p = await getProfile(uid);
+                  firstN = p?.first_name || '';
+                  lastN = p?.last_name || '';
+                  phoneN = p?.phone || '';
+                }
+                setEditFirstName(firstN);
+                setEditLastName(lastN);
+                setEditPhone(phoneN ? formatPhoneBR(phoneN) : '');
+                setEditEmail(emailN || '');
+                setEditNewPassword('');
+                setShowEditPassword(false);
+              } catch {}
+              setEditUserModalVisible(true);
+            }}
+          >
+            <MaterialCommunityIcons name="account-edit" size={40} color="#6b7280" />
           </Pressable>
-        </View>
+        ) : (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+            <Text style={[styles.headerTitle, styles.headerLabel]}>Usuário:</Text>
+            <Pressable style={{ flexShrink: 1, minWidth: 0 }} onPress={() => { if (mode !== 'auth') { setEditUserName(userName || userId || ''); setEditUserModalVisible(true); } }}>
+              <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">{userName || userId || '—'}</Text>
+            </Pressable>
+          </View>
+        )}
         <View style={{ flexDirection: 'row', gap: 8, marginLeft: 8 }}>
           {effectiveMode !== 'auth' ? (
             <>
@@ -927,15 +965,86 @@ export default function App() {
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>Editar usuário</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Nome do usuário"
-              placeholderTextColor="#9aa0b5"
-              value={editUserName}
-              onChangeText={setEditUserName}
-              maxLength={60}
-            />
+            {Platform.OS === 'web' ? (
+              <>
+                <Text style={styles.modalTitle}>Editar perfil</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Nome"
+                  placeholderTextColor="#9aa0b5"
+                  value={editFirstName}
+                  onChangeText={(t) => setEditFirstName(toTitleCase(t.replace(/[^A-Za-zÀ-ÿ\s'\-]/g, '')))}
+                  maxLength={50}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Sobrenome"
+                  placeholderTextColor="#9aa0b5"
+                  value={editLastName}
+                  onChangeText={(t) => setEditLastName(toTitleCase(t.replace(/[^A-Za-zÀ-ÿ\s'\-]/g, '')))}
+                  maxLength={50}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Telefone"
+                  placeholderTextColor="#9aa0b5"
+                  value={editPhone}
+                  onChangeText={(t) => setEditPhone(formatPhoneBR(t))}
+                  keyboardType="phone-pad"
+                  maxLength={20}
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="E-mail"
+                  placeholderTextColor="#9aa0b5"
+                  value={editEmail}
+                  onChangeText={setEditEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+                <View style={styles.inputWrapper}>
+                  <TextInput
+                    style={[styles.input, styles.inputWithIcon]}
+                    placeholder="Nova senha (opcional)"
+                    placeholderTextColor="#9aa0b5"
+                    value={editNewPassword}
+                    onChangeText={setEditNewPassword}
+                    secureTextEntry={!showEditPassword}
+                    autoComplete="off"
+                    textContentType="none"
+                  />
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={showEditPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                    style={styles.inputIconBtn}
+                    onPress={() => setShowEditPassword((v) => !v)}
+                  >
+                    <Feather name={showEditPassword ? 'eye' : 'eye-off'} size={18} color="#666" />
+                  </Pressable>
+                </View>
+                <View style={styles.inputHelpArea}>
+                  {editNewPassword && editNewPassword.length >= 12 && !isStrongPassword(editNewPassword) ? (
+                    <Text style={styles.inputHelpError}>A senha deve ter 12+ chars, maiúscula, números e símbolo.</Text>
+                  ) : null}
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={styles.modalTitle}>Editar usuário</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Nome do usuário"
+                  placeholderTextColor="#9aa0b5"
+                  value={editUserName}
+                  onChangeText={setEditUserName}
+                  maxLength={60}
+                />
+              </>
+            )}
             <View style={styles.row}>
               <Pressable
                 style={[styles.btnSecondary, { flex: 1 }]}
@@ -943,33 +1052,59 @@ export default function App() {
               >
                 <Text style={styles.btnSecondaryText}>Cancelar</Text>
               </Pressable>
-              <Pressable
-                style={[styles.btn, { flex: 1 }]}
-                onPress={async () => {
-                  const trimmed = (editUserName || '').trim();
-                  if (!trimmed) {
-                    Alert.alert('Validação', 'Informe um nome válido.');
-                    return;
-                  }
-                  try {
-                    await setUserId(trimmed);
-                    setUserIdState(trimmed);
-                    setEditUserModalVisible(false);
-                    setSaveModalMessage('Usuário atualizado com sucesso.');
-                    setSaveModalVisible(true);
-                  } catch (e) {
-                    Alert.alert('Erro', 'Falha ao salvar nome do usuário.');
-                  }
-                }}
-              >
-                <Text style={styles.btnText}>Salvar</Text>
-              </Pressable>
+              {(() => {
+                const firstName = (editFirstName || '').trim();
+                const lastName = (editLastName || '').trim();
+                const phoneDigits = (editPhone || '').replace(/\D+/g, '');
+                const email = (editEmail || '').trim();
+                const passOk = !editNewPassword || isStrongPassword(editNewPassword);
+                const readyWeb = Platform.OS === 'web'
+                  ? !!firstName && !!lastName && phoneDigits.length === 11 && isValidEmail(email) && passOk
+                  : !!(editUserName || '').trim();
+                return (
+                  <Pressable
+                    style={[styles.btn, (!readyWeb) && styles.btnDisabled, { flex: 1 }]}
+                    disabled={!readyWeb}
+                    onPress={async () => {
+                      if (Platform.OS === 'web') {
+                        try {
+                          if (userId) {
+                            await updateProfile(userId, { firstName, lastName, phone: phoneDigits });
+                            await updateAuth({ email, password: editNewPassword || undefined, firstName, lastName, phone: phoneDigits });
+                            setUserName([firstName, lastName].filter(Boolean).join(' '));
+                          }
+                          setEditUserModalVisible(false);
+                          setBannerType('success');
+                          setSaveModalMessage('Usuário atualizado com sucesso.');
+                          setSaveModalVisible(true);
+                        } catch (e) {
+                          Alert.alert('Erro', 'Falha ao salvar nome do usuário.');
+                        }
+                        return;
+                      }
+                      const trimmed = (editUserName || '').trim();
+                      try {
+                        await setUserId(trimmed);
+                        setUserIdState(trimmed);
+                        setEditUserModalVisible(false);
+                        setBannerType('success');
+                        setSaveModalMessage('Usuário atualizado com sucesso.');
+                        setSaveModalVisible(true);
+                      } catch (e) {
+                        Alert.alert('Erro', 'Falha ao salvar nome do usuário.');
+                      }
+                    }}
+                  >
+                    <Text style={styles.btnText}>Salvar</Text>
+                  </Pressable>
+                );
+              })()}
             </View>
           </View>
         </View>
       </Modal>
 
-      {effectiveMode === 'auth' && saveModalVisible ? (
+      {saveModalVisible ? (
         <View style={styles.bannerWrap}>
           <Animated.View style={[bannerType === 'error' ? styles.bannerBoxError : bannerType === 'warn' ? styles.bannerBoxWarn : styles.bannerBoxSuccess, { opacity: bannerOpacity }]}>
             <Text style={bannerType === 'error' ? styles.bannerTextError : bannerType === 'warn' ? styles.bannerTextWarn : styles.bannerTextSuccess}>{saveModalMessage}</Text>
@@ -1607,13 +1742,17 @@ const styles = StyleSheet.create({
   },
   headerBtn: {
     backgroundColor: '#2f6fed',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 0,
     borderRadius: 8,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerBtnText: {
     color: '#fff',
     fontWeight: '600',
+    fontSize: 12,
   },
   headerBtnLogout: {
     backgroundColor: Platform.OS === 'web' ? '#e53e3e' : undefined,
@@ -1649,6 +1788,12 @@ const styles = StyleSheet.create({
     shadowOffset: Platform.OS === 'web' ? undefined : { width: 0, height: 6 },
   },
   title: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+    color: '#222',
+  },
+  modalTitle: {
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 12,
@@ -1702,8 +1847,8 @@ const styles = StyleSheet.create({
   },
   inputInline: {
     marginBottom: 0,
-    height: Platform.OS === 'web' ? 40 : 38,
-    paddingVertical: Platform.OS === 'web' ? 8 : 8,
+    height: Platform.OS === 'web' ? 36 : 36,
+    paddingVertical: Platform.OS === 'web' ? 6 : 6,
   },
   inputDisabled: {
     opacity: 0.6,
@@ -1742,6 +1887,17 @@ const styles = StyleSheet.create({
   inputIconText: {
     fontSize: 16,
   },
+  inputHelpError: {
+    fontSize: 12,
+    color: '#b91c1c',
+    marginTop: 1,
+    marginBottom: 0,
+  },
+  inputHelpArea: {
+    minHeight: 22,
+    marginTop: 2,
+    marginBottom: 18,
+  },
   btn: {
     backgroundColor: '#2f6fed',
     paddingHorizontal: 12,
@@ -1749,12 +1905,12 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   btnInline: {
-    height: 40,
-    paddingVertical: 8,
+    height: 36,
+    paddingVertical: 6,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    minWidth: 110,
+    paddingHorizontal: 10,
+    minWidth: 100,
     flexShrink: 0,
   },
   btnText: {
@@ -1931,5 +2087,44 @@ const styles = StyleSheet.create({
     color: '#7f1d1d',
     textAlign: 'center',
     fontWeight: '700',
+  },
+  headerAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#2f6fed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#dbe5ff',
+  },
+  headerIconBtn: {
+    height: 40,
+    width: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalBox: {
+    width: '100%',
+    maxWidth: Platform.OS === 'web' ? 420 : 600,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    boxShadow: Platform.OS === 'web' ? '0 8px 24px rgba(0,0,0,0.16)' : undefined,
+    shadowColor: Platform.OS === 'web' ? undefined : '#000',
+    shadowOpacity: Platform.OS === 'web' ? undefined : 0.12,
+    shadowRadius: Platform.OS === 'web' ? undefined : 16,
+    shadowOffset: Platform.OS === 'web' ? undefined : { width: 0, height: 8 },
   },
 });
