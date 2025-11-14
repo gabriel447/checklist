@@ -501,6 +501,37 @@ export default function App() {
     setLocatingKey(fieldKey);
     try {
       if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.geolocation) {
+        let best = null;
+        let finalPos = null;
+        try {
+          finalPos = await new Promise((resolve) => {
+            const wid = navigator.geolocation.watchPosition(
+              (p) => {
+                const acc = typeof p?.coords?.accuracy === 'number' ? p.coords.accuracy : null;
+                if (!best || (acc != null && acc < (best?.coords?.accuracy ?? Infinity))) best = p;
+                if (acc != null && acc <= 30) {
+                  try { navigator.geolocation.clearWatch(wid); } catch {}
+                  resolve(p);
+                }
+              },
+              () => {
+                try { navigator.geolocation.clearWatch(wid); } catch {}
+                resolve(null);
+              },
+              { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+            );
+            setTimeout(() => {
+              try { navigator.geolocation.clearWatch(wid); } catch {}
+              resolve(best);
+            }, 8000);
+          });
+        } catch {}
+        if (finalPos && finalPos.coords && finalPos.coords.latitude && finalPos.coords.longitude) {
+          const lat = Number(finalPos.coords.latitude).toFixed(6);
+          const lng = Number(finalPos.coords.longitude).toFixed(6);
+          setField(fieldKey, `https://www.google.com/maps?q=${lat},${lng}`);
+          return;
+        }
         try {
           const ctrl = new AbortController();
           const to = setTimeout(() => ctrl.abort(), 3000);
