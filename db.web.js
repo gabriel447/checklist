@@ -85,6 +85,34 @@ export async function getChecklist(id, userId) {
   return data || null;
 }
 
+export async function getChecklistMeta(id, userId) {
+  const client = getClient();
+  if (!client) return null;
+  if (!userId) return null;
+  const { data } = await client
+    .from('checklists')
+    .select(
+      'id,nome,ruanumero,locclientelink,locctolink,corfibra,possuisplitter,portacliente,loccasalink,nomewifi,senhawifi,testenavegacaook,clientesatisfeito,created_at,updated_at'
+    )
+    .eq('id', id)
+    .eq('user_id', userId)
+    .maybeSingle();
+  return data || null;
+}
+
+export async function getChecklistImages(id, userId) {
+  const client = getClient();
+  if (!client) return null;
+  if (!userId) return null;
+  const { data } = await client
+    .from('checklists')
+    .select('fotoctodatauri,fotofrentecasadatauri,fotoinstalacaodatauri,fotomacequipdatauri')
+    .eq('id', id)
+    .eq('user_id', userId)
+    .maybeSingle();
+  return data || null;
+}
+
 export async function saveChecklist(data, userId) {
   const client = getClient();
   if (!client) throw new Error('Supabase não configurado');
@@ -97,14 +125,10 @@ export async function saveChecklist(data, userId) {
     ruaNumero: data.ruaNumero || '',
     locClienteLink: data.locClienteLink || '',
     locCtoLink: data.locCtoLink || '',
-    fotocto: null,
     corfibra: data.corFibra || '',
     possuisplitter: toIntBool(data.possuiSplitter),
     portaCliente: data.portaCliente || '',
     locCasaLink: data.locCasaLink || '',
-    fotofrentecasa: null,
-    fotoinstalacao: null,
-    fotomacequip: null,
     nomewifi: data.nomeWifi || '',
     senhawifi: data.senhaWifi || '',
     testenavegacaook: toIntBool(data.testeNavegacaoOk),
@@ -146,14 +170,10 @@ export async function updateChecklist(id, data, userId) {
     ruaNumero: data.ruaNumero || '',
     locClienteLink: data.locClienteLink || '',
     locCtoLink: data.locCtoLink || '',
-    fotocto: null,
     corfibra: data.corFibra || '',
     possuisplitter: toIntBool(data.possuiSplitter),
     portaCliente: data.portaCliente || '',
     locCasaLink: data.locCasaLink || '',
-    fotofrentecasa: null,
-    fotoinstalacao: null,
-    fotomacequip: null,
     nomewifi: data.nomeWifi || '',
     senhawifi: data.senhaWifi || '',
     testenavegacaook: toIntBool(data.testeNavegacaoOk),

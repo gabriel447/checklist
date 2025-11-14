@@ -23,11 +23,13 @@ import * as Print from 'expo-print';
   import * as FileSystem from 'expo-file-system';
   import { shareAsync } from 'expo-sharing';
   import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
-  import {
-    initDB,
-    getOrCreateUserId,
-    listChecklists,
-    getChecklist,
+import {
+  initDB,
+  getOrCreateUserId,
+  listChecklists,
+  getChecklist,
+  getChecklistMeta,
+  getChecklistImages,
   saveChecklist,
   updateChecklist,
   deleteChecklist,
@@ -369,7 +371,7 @@ export default function App() {
     setList(rows);
   };
 
-  const compressDataUri = async (dataUri, maxW = 1280, maxH = 1280, quality = 0.5) => {
+  const compressDataUri = async (dataUri, maxW = 1024, maxH = 1024, quality = 0.45) => {
     try {
       if (!dataUri) return null;
       if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
@@ -1599,7 +1601,7 @@ export default function App() {
             <Text style={styles.label}>📸 Foto da CTO</Text>
             {form.fotoCto || form.fotoCtoDataUri ? (
               <View style={styles.imageWrapper}>
-                <Image source={{ uri: form.fotoCto || form.fotoCtoDataUri }} style={styles.image} />
+                <Image source={{ uri: form.fotoCto || form.fotoCtoDataUri }} style={styles.image} resizeMode="cover" />
                 <Pressable style={styles.closeBadge} onPress={() => setForm({ ...form, fotoCto: null, fotoCtoDataUri: null })}>
                   <Text style={styles.closeBadgeText}>×</Text>
                 </Pressable>
@@ -1688,7 +1690,7 @@ export default function App() {
             <Text style={styles.label}>🏘 Foto da frente da casa</Text>
             {form.fotoFrenteCasa || form.fotoFrenteCasaDataUri ? (
               <View style={styles.imageWrapper}>
-                <Image source={{ uri: form.fotoFrenteCasa || form.fotoFrenteCasaDataUri }} style={styles.image} />
+                <Image source={{ uri: form.fotoFrenteCasa || form.fotoFrenteCasaDataUri }} style={styles.image} resizeMode="cover" />
                 <Pressable style={styles.closeBadge} onPress={() => setForm({ ...form, fotoFrenteCasa: null, fotoFrenteCasaDataUri: null })}>
                   <Text style={styles.closeBadgeText}>×</Text>
                 </Pressable>
@@ -1708,7 +1710,7 @@ export default function App() {
             <Text style={styles.label}>🧰 Foto da instalação do equipamento (ONT/Router)</Text>
             {form.fotoInstalacao || form.fotoInstalacaoDataUri ? (
               <View style={styles.imageWrapper}>
-                <Image source={{ uri: form.fotoInstalacao || form.fotoInstalacaoDataUri }} style={styles.image} />
+                <Image source={{ uri: form.fotoInstalacao || form.fotoInstalacaoDataUri }} style={styles.image} resizeMode="cover" />
                 <Pressable style={styles.closeBadge} onPress={() => setForm({ ...form, fotoInstalacao: null, fotoInstalacaoDataUri: null })}>
                   <Text style={styles.closeBadgeText}>×</Text>
                 </Pressable>
@@ -1721,7 +1723,7 @@ export default function App() {
             <Text style={styles.label}>🏷 Foto do MAC do equipamento</Text>
             {form.fotoMacEquip || form.fotoMacEquipDataUri ? (
               <View style={styles.imageWrapper}>
-                <Image source={{ uri: form.fotoMacEquip || form.fotoMacEquipDataUri }} style={styles.image} />
+                <Image source={{ uri: form.fotoMacEquip || form.fotoMacEquipDataUri }} style={styles.image} resizeMode="cover" />
                 <Pressable style={styles.closeBadge} onPress={() => setForm({ ...form, fotoMacEquip: null, fotoMacEquipDataUri: null })}>
                   <Text style={styles.closeBadgeText}>×</Text>
                 </Pressable>
@@ -2095,7 +2097,7 @@ const styles = StyleSheet.create({
   },
   image: {
     width: '100%',
-    height: 180,
+    height: Platform.OS === 'web' ? 220 : 180,
     borderRadius: 8,
     marginBottom: 8,
     backgroundColor: '#e9ecf3',
