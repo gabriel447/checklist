@@ -696,6 +696,20 @@ export default function App() {
           .join(' ');
       };
 
+      let displayUser = (userName || '').trim();
+      let displayEmail = '';
+      let displayPhone = '';
+      try {
+        const u0 = await getCurrentUser();
+        displayEmail = u0?.email || '';
+        const uid0 = u0?.id || userId;
+        if (uid0) {
+          const p0 = await getProfile(uid0);
+          const nm0 = [p0?.first_name, p0?.last_name].filter(Boolean).join(' ').trim();
+          displayUser = displayUser || nm0;
+          displayPhone = p0?.phone ? formatPhoneBR(p0.phone) : '';
+        }
+      } catch {}
       const html = `
       <html>
         <head>
@@ -722,11 +736,13 @@ export default function App() {
         </head>
         <body>
           <div class="header">
-            <div class="title">Checklist de Instalação / Reparo</div>
+            <div class="title">Checklist</div>
             <div class="meta">${new Date().toLocaleString()}</div>
           </div>
           <div class="card">
-            <div class="row"><span class="label">Usuário:</span> ${userId || ''}</div>
+            <div class="row"><span class="label">Usuário:</span> ${displayUser || ''}</div>
+            <div class="row"><span class="label">E‑mail:</span> ${displayEmail || ''}</div>
+            <div class="row"><span class="label">Telefone:</span> ${displayPhone || ''}</div>
           </div>
 
           <div class="card">
@@ -807,7 +823,57 @@ export default function App() {
         return await toBase64(uri);
       };
 
-      const f = row;
+      let displayUser = (userName || '').trim();
+      let displayEmail = '';
+      let displayPhone = '';
+      try {
+        const u0 = await getCurrentUser();
+        displayEmail = u0?.email || '';
+        const uid0 = u0?.id || userId;
+        if (uid0) {
+          const p0 = await getProfile(uid0);
+          const nm0 = [p0?.first_name, p0?.last_name].filter(Boolean).join(' ').trim();
+          displayUser = displayUser || nm0;
+          displayPhone = p0?.phone ? formatPhoneBR(p0.phone) : '';
+        }
+      } catch {}
+      const f = {
+        nome: row.nome || '',
+        ruaNumero: row.ruaNumero || row.ruanumero || '',
+        locClienteLink: row.locClienteLink || row.locclientelink || '',
+        locCtoLink: row.locCtoLink || row.locctolink || '',
+        fotoCto: row.fotoCto || row.fotocto || null,
+        fotoCtoDataUri: row.fotoCtoDataUri || row.fotoctodatauri || null,
+        corFibra: row.corFibra || row.corfibra || '',
+        possuiSplitter:
+          row.possuiSplitter === 1 || row.possuisplitter === 1
+            ? true
+            : row.possuiSplitter === 0 || row.possuisplitter === 0
+            ? false
+            : null,
+        portaCliente: row.portaCliente || row.portacliente || '',
+        locCasaLink: row.locCasaLink || row.loccasalink || '',
+        fotoFrenteCasa: row.fotoFrenteCasa || row.fotofrentecasa || null,
+        fotoFrenteCasaDataUri: row.fotoFrenteCasaDataUri || row.fotofrentecasadatauri || null,
+        fotoInstalacao: row.fotoInstalacao || row.fotoinstalacao || null,
+        fotoInstalacaoDataUri: row.fotoInstalacaoDataUri || row.fotoinstalacaodatauri || null,
+        fotoMacEquip: row.fotoMacEquip || row.fotomacequip || null,
+        fotoMacEquipDataUri: row.fotoMacEquipDataUri || row.fotomacequipdatauri || null,
+        nomeWifi: row.nomeWifi || row.nomewifi || '',
+        senhaWifi: row.senhaWifi || row.senhawifi || '',
+        testeNavegacaoOk:
+          row.testeNavegacaoOk === 1 || row.testenavegacaook === 1
+            ? true
+            : row.testeNavegacaoOk === 0 || row.testenavegacaook === 0
+            ? false
+            : null,
+        clienteSatisfeito:
+          row.clienteSatisfeito === 1 || row.clientesatisfeito === 1
+            ? true
+            : row.clienteSatisfeito === 0 || row.clientesatisfeito === 0
+            ? false
+            : null,
+      };
       const imgCto = await dataOrRead(f.fotoCtoDataUri, f.fotoCto);
       const imgCasa = await dataOrRead(f.fotoFrenteCasaDataUri, f.fotoFrenteCasa);
       const imgInst = await dataOrRead(f.fotoInstalacaoDataUri, f.fotoInstalacao);
@@ -848,11 +914,13 @@ export default function App() {
         </head>
         <body>
           <div class="header">
-            <div class="title">Checklist de Instalação / Reparo</div>
+            <div class="title">Checklist</div>
             <div class="meta">${new Date().toLocaleString()}</div>
           </div>
           <div class="card">
-            <div class="row"><span class="label">Usuário:</span> ${userId || ''}</div>
+            <div class="row"><span class="label">Usuário:</span> ${displayUser || ''}</div>
+            <div class="row"><span class="label">E‑mail:</span> ${displayEmail || ''}</div>
+            <div class="row"><span class="label">Telefone:</span> ${displayPhone || ''}</div>
           </div>
 
           <div class="card">
