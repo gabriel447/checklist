@@ -824,17 +824,27 @@ export default function App() {
     }
   };
 
-  const groupedList = useMemo(() => {
+  const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  const groupedMonths = useMemo(() => {
     const groups = {};
     for (const item of list) {
-      const dateStr = new Date(item.created_at).toLocaleDateString();
-      if (!groups[dateStr]) groups[dateStr] = [];
-      groups[dateStr].push(item);
+      const d = new Date(item.created_at);
+      const y = d.getFullYear();
+      const m = d.getMonth();
+      const key = `${y}-${String(m + 1).padStart(2, '0')}`;
+      if (!groups[key]) groups[key] = { label: `${monthNames[m]} ${y}`, items: [] };
+      groups[key].items.push(item);
     }
-    return groups;
+    // sort keys desc by year-month
+    const sorted = Object.fromEntries(
+      Object.entries(groups).sort(([a], [b]) => (a > b ? -1 : a < b ? 1 : 0))
+    );
+    return sorted;
   }, [list]);
 
-  const actionLabel = currentId ? 'Salvar alterações' : 'Criar checklist';
+  const [expandedMonths, setExpandedMonths] = useState({});
+
+  const actionLabel = currentId ? 'Salvar alterações' : 'Criar Checklist';
   const wantsAuthRoute = Platform.OS === 'web' && (route === '/login' || route === '/cadastrar');
   const effectiveMode = Platform.OS === 'web' && (!userId || wantsAuthRoute) ? 'auth' : mode;
 
@@ -1330,18 +1340,22 @@ export default function App() {
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.content}>
             <Text style={styles.title}>Checklists</Text>
-            {Object.keys(groupedList).length === 0 && (
-              <Text style={{ color: '#666' }}>Nenhum checklist salvo ainda.</Text>
+            {Object.keys(groupedMonths).length === 0 && (
+              <Text style={styles.emptyListText}>Nenhum checklist salvo ainda.</Text>
             )}
-            {Object.entries(groupedList).map(([dateStr, items]) => (
-              <View key={dateStr} style={styles.section}>
-                <Text style={styles.sectionTitle}>{dateStr}</Text>
+            {Object.entries(groupedMonths).map(([key, group]) => (
+              <Section
+                key={key}
+                title={group.label}
+                expanded={!!expandedMonths[key]}
+                onToggle={() => setExpandedMonths((prev) => ({ ...prev, [key]: !prev[key] }))}
+              >
                 <View style={{ marginTop: 8 }}>
-                  {items.map((it) => (
+                  {group.items.map((it) => (
                     <View key={it.id} style={styles.listItem}>
                       <Pressable style={{ flex: 1 }} onPress={() => loadChecklist(it.id)}>
                         <Text style={styles.listItemTitle} numberOfLines={2} ellipsizeMode="tail">{it.nome || 'Sem nome'}</Text>
-                        <Text style={styles.listItemSub}>{new Date(it.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</Text>
+                        <Text style={styles.listItemSub}>{new Date(it.created_at).toLocaleDateString('pt-BR')} • {new Date(it.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</Text>
                       </Pressable>
                       <Pressable style={styles.btnSecondary} onPress={() => onExportPdfItem(it.id)}>
                         <Text style={styles.btnSecondaryText}>Exportar</Text>
@@ -1352,7 +1366,7 @@ export default function App() {
                     </View>
                   ))}
                 </View>
-              </View>
+              </Section>
             ))}
           </View>
         </ScrollView>
@@ -1827,6 +1841,9 @@ const styles = StyleSheet.create({
   sectionBody: {
     marginTop: 12,
   },
+  emptyListText: {
+    color: '#666',
+  },
   label: {
     fontSize: 13,
     color: '#444',
@@ -1890,13 +1907,13 @@ const styles = StyleSheet.create({
   inputHelpError: {
     fontSize: 12,
     color: '#b91c1c',
-    marginTop: 1,
-    marginBottom: 0,
+    marginTop: 4,
+    marginBottom: 6,
   },
   inputHelpArea: {
     minHeight: 22,
-    marginTop: 2,
-    marginBottom: 18,
+    marginTop: 4,
+    marginBottom: 12,
   },
   btn: {
     backgroundColor: '#2f6fed',
