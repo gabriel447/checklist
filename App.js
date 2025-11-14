@@ -150,8 +150,8 @@ const isValidCpf = (s) => {
   const d2 = calc(d.slice(0, 10), 11);
   return d2 === Number(d[10]);
 };
-const Section = ({ title, children, expanded, onToggle }) => (
-  <View style={styles.section}>
+const Section = ({ title, children, expanded, onToggle, style }) => (
+  <View style={[styles.section, style]}>
     <Pressable onPress={onToggle} style={styles.sectionHeader}>
       <Text style={styles.sectionTitle}>{title}</Text>
       <Text style={styles.sectionToggle}>{expanded ? '▲' : '▼'}</Text>
@@ -1364,7 +1364,7 @@ export default function App() {
                 ) : null}
               </View>
             </>
-            <View style={styles.row}>
+          <View style={styles.row}>
               <Pressable
                 style={[styles.btnSecondary, { flex: 1 }]}
                 onPress={() => setEditUserModalVisible(false)}
@@ -1724,7 +1724,7 @@ export default function App() {
                         <Text style={styles.listItemTitle} numberOfLines={2} ellipsizeMode="tail">{it.nome || 'Sem nome'}</Text>
                         <Text style={styles.listItemSub}>{new Date(it.created_at).toLocaleDateString('pt-BR')} • {new Date(it.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</Text>
                       </Pressable>
-                      <Pressable style={styles.btnSecondary} disabled={isExporting && exportingId === it.id} onPress={() => onExportPdfItem(it.id)}>
+                      <Pressable style={[styles.btnSecondary, styles.btnInline]} disabled={isExporting && exportingId === it.id} onPress={() => onExportPdfItem(it.id)}>
                         <View style={{ justifyContent: 'center', alignItems: 'center' }}>
                           {isExporting && exportingId === it.id ? (
                             <ActivityIndicator color="#2f6fed" style={{ position: 'absolute' }} />
@@ -1732,7 +1732,7 @@ export default function App() {
                           <Text style={[styles.btnSecondaryText, isExporting && exportingId === it.id ? { opacity: 0 } : null]}>Exportar</Text>
                         </View>
                       </Pressable>
-                      <Pressable style={styles.delBtn} onPress={() => onDeleteRequest(it.id)}>
+                      <Pressable style={[styles.delBtn, styles.btnInline]} onPress={() => onDeleteRequest(it.id)}>
                         <Text style={styles.delBtnText}>Deletar</Text>
                       </Pressable>
                     </View>
@@ -1779,36 +1779,45 @@ export default function App() {
             />
 
             <Text style={styles.label}>📍 Localização (link do Maps)</Text>
-            <View style={styles.row}>
-              <View style={{ flex: 1 }}>
-                <TextInput
-                  style={[
-                    styles.input,
-                    styles.inputInline,
-                    { flex: 1 },
-                    form.locClienteLink ? styles.inputLinkReady : null,
-                    Platform.OS === 'web' && form.locClienteLink ? styles.pointerCursor : null,
-                  ]}
-                  placeholder="https://www.google.com/maps?..."
-                  placeholderTextColor="#9aa0b5"
-                  value={form.locClienteLink}
-                  onChangeText={() => {}}
-                  editable={false}
-                  caretHidden
-                  ref={locClienteRef}
-                  onFocus={() => {
-                    try { locClienteRef.current?.blur(); } catch {}
-                    if (Platform.OS === 'web' && form.locClienteLink) {
+            <View style={{ flex: 1 }}>
+              <TextInput
+                style={[
+                  styles.input,
+                  styles.inputInline,
+                  { flex: 1 },
+                  form.locClienteLink ? styles.inputLinkReady : null,
+                  Platform.OS === 'web' && form.locClienteLink ? styles.pointerCursor : null,
+                ]}
+                placeholder="https://www.google.com/maps?..."
+                placeholderTextColor="#9aa0b5"
+                value={form.locClienteLink}
+                onChangeText={() => {}}
+                editable={Platform.OS === 'web' ? false : true}
+                showSoftInputOnFocus={Platform.OS === 'web' ? undefined : false}
+                selectTextOnFocus={false}
+                caretHidden
+                ref={locClienteRef}
+                onFocus={() => {
+                  try { locClienteRef.current?.blur(); } catch {}
+                  if (form.locClienteLink) {
+                    if (Platform.OS === 'web') {
                       const ok = window.confirm('Abrir o link no Google Maps?');
                       if (ok) { window.open(form.locClienteLink, '_blank', 'noopener,noreferrer'); }
+                    } else {
+                      Alert.alert('Abrir no Maps', 'Deseja abrir o link no Google Maps?', [
+                        { text: 'Cancelar', style: 'cancel' },
+                        { text: 'Abrir', onPress: () => Linking.openURL(form.locClienteLink) },
+                      ]);
                     }
-                  }}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  spellCheck={false}
-                />
-              </View>
-              <Pressable style={[styles.btn, styles.btnInline]} onPress={() => useCurrentLocation('locClienteLink')} disabled={isLocating}>
+                  }
+                }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                spellCheck={false}
+              />
+            </View>
+            <View style={styles.rowSpaceBetween}>
+              <Pressable style={[styles.btn, styles.btnInlineFluid]} onPress={() => useCurrentLocation('locClienteLink')} disabled={isLocating}>
                 <View style={{ justifyContent: 'center', alignItems: 'center' }}>
                   {isLocating && locatingKey === 'locClienteLink' ? (
                     <ActivityIndicator color="#fff" style={{ position: 'absolute' }} />
@@ -1816,7 +1825,7 @@ export default function App() {
                   <Text style={[styles.btnText, isLocating && locatingKey === 'locClienteLink' ? { opacity: 0 } : null]}>Puxar Localização</Text>
                 </View>
               </Pressable>
-              <Pressable style={[styles.btnSecondary, styles.btnInline]} onPress={() => pasteFromMaps('locClienteLink')}>
+              <Pressable style={[styles.btnSecondary, styles.btnInlineFluid]} onPress={() => pasteFromMaps('locClienteLink')}>
                 <Text style={styles.btnSecondaryText}>Colar do Maps</Text>
               </Pressable>
             </View>
@@ -1829,36 +1838,45 @@ export default function App() {
             onToggle={() => setExpanded((e) => ({ ...e, cto: !e.cto }))}
           >
             <Text style={styles.label}>📍 Localização da CTO (link do Maps)</Text>
-            <View style={styles.row}>
-              <View style={{ flex: 1 }}>
-                <TextInput
-                  style={[
-                    styles.input,
-                    styles.inputInline,
-                    { flex: 1 },
-                    form.locCtoLink ? styles.inputLinkReady : null,
-                    Platform.OS === 'web' && form.locCtoLink ? styles.pointerCursor : null,
-                  ]}
-                  placeholder="https://www.google.com/maps?..."
-                  placeholderTextColor="#9aa0b5"
-                  value={form.locCtoLink}
-                  onChangeText={() => {}}
-                  editable={false}
-                  caretHidden
-                  ref={locCtoRef}
-                  onFocus={() => {
-                    try { locCtoRef.current?.blur(); } catch {}
-                    if (Platform.OS === 'web' && form.locCtoLink) {
+            <View style={{ flex: 1 }}>
+              <TextInput
+                style={[
+                  styles.input,
+                  styles.inputInline,
+                  { flex: 1 },
+                  form.locCtoLink ? styles.inputLinkReady : null,
+                  Platform.OS === 'web' && form.locCtoLink ? styles.pointerCursor : null,
+                ]}
+                placeholder="https://www.google.com/maps?..."
+                placeholderTextColor="#9aa0b5"
+                value={form.locCtoLink}
+                onChangeText={() => {}}
+                editable={Platform.OS === 'web' ? false : true}
+                showSoftInputOnFocus={Platform.OS === 'web' ? undefined : false}
+                selectTextOnFocus={false}
+                caretHidden
+                ref={locCtoRef}
+                onFocus={() => {
+                  try { locCtoRef.current?.blur(); } catch {}
+                  if (form.locCtoLink) {
+                    if (Platform.OS === 'web') {
                       const ok = window.confirm('Abrir o link no Google Maps?');
                       if (ok) { window.open(form.locCtoLink, '_blank', 'noopener,noreferrer'); }
+                    } else {
+                      Alert.alert('Abrir no Maps', 'Deseja abrir o link no Google Maps?', [
+                        { text: 'Cancelar', style: 'cancel' },
+                        { text: 'Abrir', onPress: () => Linking.openURL(form.locCtoLink) },
+                      ]);
                     }
-                  }}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  spellCheck={false}
-                />
-              </View>
-              <Pressable style={[styles.btn, styles.btnInline]} onPress={() => useCurrentLocation('locCtoLink')} disabled={isLocating}>
+                  }
+                }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                spellCheck={false}
+              />
+            </View>
+            <View style={styles.rowSpaceBetween}>
+              <Pressable style={[styles.btn, styles.btnInlineFluid]} onPress={() => useCurrentLocation('locCtoLink')} disabled={isLocating}>
                 <View style={{ justifyContent: 'center', alignItems: 'center' }}>
                   {isLocating && locatingKey === 'locCtoLink' ? (
                     <ActivityIndicator color="#fff" style={{ position: 'absolute' }} />
@@ -1866,7 +1884,7 @@ export default function App() {
                   <Text style={[styles.btnText, isLocating && locatingKey === 'locCtoLink' ? { opacity: 0 } : null]}>Puxar Localização</Text>
                 </View>
               </Pressable>
-              <Pressable style={[styles.btnSecondary, styles.btnInline]} onPress={() => pasteFromMaps('locCtoLink')}>
+              <Pressable style={[styles.btnSecondary, styles.btnInlineFluid]} onPress={() => pasteFromMaps('locCtoLink')}>
                 <Text style={styles.btnSecondaryText}>Colar do Maps</Text>
               </Pressable>
             </View>
@@ -1880,7 +1898,7 @@ export default function App() {
                 </Pressable>
               </View>
             ) : null}
-            <Pressable style={[styles.btn, { marginBottom: 12 }]} onPress={() => askCameraAndPick('fotoCto')}>
+            <Pressable style={[styles.btn, styles.btnCapture, { marginBottom: 12 }]} onPress={() => askCameraAndPick('fotoCto')}>
               <Text style={styles.btnText}>Capturar/Selecionar Foto</Text>
             </Pressable>
 
@@ -1921,36 +1939,45 @@ export default function App() {
             onToggle={() => setExpanded((e) => ({ ...e, casa: !e.casa }))}
           >
             <Text style={styles.label}>📍 Localização da casa (link do Maps)</Text>
-            <View style={styles.row}>
-              <View style={{ flex: 1 }}>
-                <TextInput
-                  style={[
-                    styles.input,
-                    styles.inputInline,
-                    { flex: 1 },
-                    form.locCasaLink ? styles.inputLinkReady : null,
-                    Platform.OS === 'web' && form.locCasaLink ? styles.pointerCursor : null,
-                  ]}
-                  placeholder="https://www.google.com/maps?..."
-                  placeholderTextColor="#9aa0b5"
-                  value={form.locCasaLink}
-                  onChangeText={() => {}}
-                  editable={false}
-                  caretHidden
-                  ref={locCasaRef}
-                  onFocus={() => {
-                    try { locCasaRef.current?.blur(); } catch {}
-                    if (Platform.OS === 'web' && form.locCasaLink) {
+            <View style={{ flex: 1 }}>
+              <TextInput
+                style={[
+                  styles.input,
+                  styles.inputInline,
+                  { flex: 1 },
+                  form.locCasaLink ? styles.inputLinkReady : null,
+                  Platform.OS === 'web' && form.locCasaLink ? styles.pointerCursor : null,
+                ]}
+                placeholder="https://www.google.com/maps?..."
+                placeholderTextColor="#9aa0b5"
+                value={form.locCasaLink}
+                onChangeText={() => {}}
+                editable={Platform.OS === 'web' ? false : true}
+                showSoftInputOnFocus={Platform.OS === 'web' ? undefined : false}
+                selectTextOnFocus={false}
+                caretHidden
+                ref={locCasaRef}
+                onFocus={() => {
+                  try { locCasaRef.current?.blur(); } catch {}
+                  if (form.locCasaLink) {
+                    if (Platform.OS === 'web') {
                       const ok = window.confirm('Abrir o link no Google Maps?');
                       if (ok) { window.open(form.locCasaLink, '_blank', 'noopener,noreferrer'); }
+                    } else {
+                      Alert.alert('Abrir no Maps', 'Deseja abrir o link no Google Maps?', [
+                        { text: 'Cancelar', style: 'cancel' },
+                        { text: 'Abrir', onPress: () => Linking.openURL(form.locCasaLink) },
+                      ]);
                     }
-                  }}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  spellCheck={false}
-                />
-              </View>
-              <Pressable style={[styles.btn, styles.btnInline]} onPress={() => useCurrentLocation('locCasaLink')} disabled={isLocating}>
+                  }
+                }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                spellCheck={false}
+              />
+            </View>
+            <View style={styles.rowSpaceBetween}>
+              <Pressable style={[styles.btn, styles.btnInlineFluid]} onPress={() => useCurrentLocation('locCasaLink')} disabled={isLocating}>
                 <View style={{ justifyContent: 'center', alignItems: 'center' }}>
                   {isLocating && locatingKey === 'locCasaLink' ? (
                     <ActivityIndicator color="#fff" style={{ position: 'absolute' }} />
@@ -1958,7 +1985,7 @@ export default function App() {
                   <Text style={[styles.btnText, isLocating && locatingKey === 'locCasaLink' ? { opacity: 0 } : null]}>Puxar Localização</Text>
                 </View>
               </Pressable>
-              <Pressable style={[styles.btnSecondary, styles.btnInline]} onPress={() => pasteFromMaps('locCasaLink')}>
+              <Pressable style={[styles.btnSecondary, styles.btnInlineFluid]} onPress={() => pasteFromMaps('locCasaLink')}>
                 <Text style={styles.btnSecondaryText}>Colar do Maps</Text>
               </Pressable>
             </View>
@@ -1972,7 +1999,7 @@ export default function App() {
                 </Pressable>
               </View>
             ) : null}
-            <Pressable style={[styles.btn, { marginBottom: 12 }]} onPress={() => askCameraAndPick('fotoFrenteCasa')}>
+            <Pressable style={[styles.btn, styles.btnCapture, { marginBottom: 12 }]} onPress={() => askCameraAndPick('fotoFrenteCasa')}>
               <Text style={styles.btnText}>Capturar/Selecionar Foto</Text>
             </Pressable>
           </Section>
@@ -1992,7 +2019,7 @@ export default function App() {
                 </Pressable>
               </View>
             ) : null}
-            <Pressable style={[styles.btn, { marginBottom: 12 }]} onPress={() => askCameraAndPick('fotoInstalacao')}>
+            <Pressable style={[styles.btn, styles.btnCapture, { marginBottom: 12 }]} onPress={() => askCameraAndPick('fotoInstalacao')}>
               <Text style={styles.btnText}>Capturar/Selecionar Foto</Text>
             </Pressable>
 
@@ -2005,7 +2032,7 @@ export default function App() {
                 </Pressable>
               </View>
             ) : null}
-            <Pressable style={[styles.btn, { marginBottom: 12 }]} onPress={() => askCameraAndPick('fotoMacEquip')}>
+            <Pressable style={[styles.btn, styles.btnCapture, { marginBottom: 12 }]} onPress={() => askCameraAndPick('fotoMacEquip')}>
               <Text style={styles.btnText}>Capturar/Selecionar Foto</Text>
             </Pressable>
 
@@ -2064,12 +2091,12 @@ export default function App() {
             <ToggleYesNo value={form.clienteSatisfeito} onChange={(v) => setField('clienteSatisfeito', v)} />
           </Section>
 
-          <View style={{ height: 8 }} />
-          <View style={styles.row}>
+          <View />
+          <View style={styles.btnGroup}>
             <Pressable
               style={[
                 styles.btn,
-                { flex: 1 },
+                { width: '100%', marginBottom: 0 },
                 (isSaving || !canSubmit) && styles.btnDisabled,
               ]}
               onPress={onSave}
@@ -2081,54 +2108,54 @@ export default function App() {
                 <Text style={styles.btnText}>{actionLabel}</Text>
               )}
             </Pressable>
+
+            {(hasChanges && (!currentId || Platform.OS === 'web')) ? (
+              <Pressable
+                style={[styles.btnSecondary, { width: '100%', marginBottom: 0 }]}
+                onPress={() => {
+                  resetUIForNew();
+                  setCurrentId(null);
+                  if (Platform.OS === 'web') {
+                    window.history.pushState({}, '', '/home');
+                    setRoute('/home');
+                    setMode('editor');
+                  } else {
+                    setMode('editor');
+                  }
+                }}
+              >
+                <Text style={styles.btnSecondaryText}>Limpar Campos</Text>
+              </Pressable>
+            ) : null}
+
+            {currentId ? (
+              <Pressable
+                style={[styles.btnSecondary, { width: '100%', marginTop: 0 }]}
+                onPress={() => {
+                  resetUIForNew();
+                  setCurrentId(null);
+                  if (Platform.OS === 'web') {
+                    window.history.pushState({}, '', '/home');
+                    setRoute('/home');
+                    setMode('editor');
+                  } else {
+                    setMode('editor');
+                  }
+                }}
+              >
+                <Text style={styles.btnSecondaryText}>Novo Checklist</Text>
+              </Pressable>
+            ) : null}
+
+            {currentId ? (
+              <Pressable
+                style={[styles.btnDanger, { width: '100%' }]}
+                onPress={() => onDeleteRequest(currentId)}
+              >
+                <Text style={styles.btnText}>Deletar Checklist</Text>
+              </Pressable>
+            ) : null}
           </View>
-
-          {hasChanges ? (
-            <Pressable
-              style={[styles.btnSecondary, { marginTop: 8 }]}
-              onPress={() => {
-                resetUIForNew();
-                setCurrentId(null);
-                if (Platform.OS === 'web') {
-                  window.history.pushState({}, '', '/home');
-                  setRoute('/home');
-                  setMode('editor');
-                } else {
-                  setMode('editor');
-                }
-              }}
-            >
-              <Text style={styles.btnSecondaryText}>Limpar Campos</Text>
-            </Pressable>
-          ) : null}
-
-          {currentId ? (
-            <Pressable
-              style={[styles.btnSecondary, { marginTop: 8 }]}
-              onPress={() => {
-                resetUIForNew();
-                setCurrentId(null);
-                if (Platform.OS === 'web') {
-                  window.history.pushState({}, '', '/home');
-                  setRoute('/home');
-                  setMode('editor');
-                } else {
-                  setMode('editor');
-                }
-              }}
-            >
-              <Text style={styles.btnSecondaryText}>Novo Checklist</Text>
-            </Pressable>
-          ) : null}
-
-          {currentId ? (
-            <Pressable
-              style={[styles.btnDanger, { marginTop: 8 }]}
-              onPress={() => onDeleteRequest(currentId)}
-            >
-              <Text style={styles.btnText}>Deletar Checklist</Text>
-            </Pressable>
-          ) : null}
 
           {null}
 
@@ -2164,7 +2191,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
-    marginTop: Platform.OS === 'web' ? 0 : 24,
+    marginTop: 0,
   },
   headerInner: {
     flexDirection: 'row',
@@ -2196,13 +2223,13 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
     fontSize: 12,
-  },
+    },
   headerBtnLogout: {
     backgroundColor: '#e53e3e',
     borderColor: '#e53e3e',
   },
   scrollContent: {
-    paddingHorizontal: Platform.OS === 'web' ? 16 : 24,
+    paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 40,
   },
@@ -2282,7 +2309,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#444',
     marginBottom: 6,
-    marginTop: 2,
+    marginTop: 4,
   },
   labelMuted: {
     color: '#9aa0b5',
@@ -2294,12 +2321,12 @@ const styles = StyleSheet.create({
     paddingVertical: Platform.OS === 'web' ? 10 : 10,
     fontSize: Platform.OS === 'web' ? 16 : 14,
     color: '#222',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   inputInline: {
     marginBottom: 0,
-    height: Platform.OS === 'web' ? 44 : 44,
-    paddingVertical: Platform.OS === 'web' ? 10 : 10,
+    height: Platform.OS === 'web' ? 36 : 36,
+    paddingVertical: Platform.OS === 'web' ? 6 : 6,
   },
   inputDisabled: {
     opacity: 0.6,
@@ -2319,6 +2346,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    marginBottom: 8,
+  },
+  rowSpaceBetween: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginTop: 8,
     marginBottom: 8,
   },
   inputWrapper: {
@@ -2352,8 +2387,11 @@ const styles = StyleSheet.create({
   btn: {
     backgroundColor: '#2f6fed',
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 6,
     borderRadius: 8,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   btnInline: {
     height: 36,
@@ -2364,10 +2402,18 @@ const styles = StyleSheet.create({
     minWidth: 100,
     flexShrink: 0,
   },
+  btnInlineFluid: {
+    height: 36,
+    paddingVertical: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    flex: 1,
+  },
   btnText: {
     color: '#fff',
     fontWeight: '600',
-    fontSize: 13,
+    fontSize: 12,
     textAlign: 'center',
   },
   btnDisabled: {
@@ -2376,22 +2422,34 @@ const styles = StyleSheet.create({
   btnSecondary: {
     backgroundColor: '#eef2ff',
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 6,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#d7defa',
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   btnSecondaryText: {
     color: '#2f6fed',
     fontWeight: '600',
-    fontSize: 13,
+    fontSize: 12,
     textAlign: 'center',
   },
   btnDanger: {
     backgroundColor: '#e53e3e',
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 6,
     borderRadius: 8,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  btnCapture: {
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 0,
   },
   image: {
     width: '100%',
@@ -2422,12 +2480,14 @@ const styles = StyleSheet.create({
   toggleRow: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   toggleBtn: {
     flex: 1,
     backgroundColor: '#eef2ff',
-    paddingVertical: 10,
+    paddingVertical: 6,
+    minHeight: 36,
+    height: 36,
     borderRadius: 8,
     alignItems: 'center',
     borderWidth: 1,
@@ -2440,6 +2500,7 @@ const styles = StyleSheet.create({
   toggleText: {
     color: '#2f6fed',
     fontWeight: '600',
+    fontSize: 12,
   },
   toggleTextActive: {
     color: '#fff',
@@ -2461,9 +2522,7 @@ const styles = StyleSheet.create({
   },
   delBtn: {
     backgroundColor: '#e53e3e',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 6,
+    borderRadius: 8,
   },
   delBtnText: {
     color: '#fff',
@@ -2471,13 +2530,19 @@ const styles = StyleSheet.create({
   },
   bannerWrap: {
     position: 'absolute',
-    top: Platform.OS === 'web' ? 12 : 60,
+    top: 12,
     left: 0,
     right: 0,
     zIndex: 1000,
     elevation: 3,
     pointerEvents: 'none',
     alignItems: 'center',
+  },
+  btnGroup: {
+    flexDirection: 'column',
+    gap: 8,
+    marginTop: 12,
+    marginBottom: 12,
   },
   bannerBoxSuccess: {
     backgroundColor: '#e6f6ea',
