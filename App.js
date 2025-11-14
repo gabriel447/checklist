@@ -13,6 +13,7 @@ import {
   Platform,
   Animated,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -101,6 +102,19 @@ const Section = ({ title, children, expanded, onToggle }) => (
 );
 
 export default function App() {
+  const initialUserIdWeb = Platform.OS === 'web' && typeof window !== 'undefined' ? (() => {
+    try {
+      const id = window.localStorage.getItem('sessionUserId');
+      const started = Number(window.localStorage.getItem('sessionStartedAt') || '0');
+      const now = Date.now();
+      const eightHours = 8 * 60 * 60 * 1000;
+      if (id && started && now - started <= eightHours) return id;
+    } catch {}
+    return null;
+  })() : null;
+  const initialModeWeb = Platform.OS === 'web'
+    ? ((initialUserIdWeb && typeof window !== 'undefined' && window.location && window.location.pathname && window.location.pathname !== '/login' && window.location.pathname !== '/cadastrar') ? 'editor' : 'auth')
+    : 'editor';
   const [expanded, setExpanded] = useState({
     cliente: true,
     cto: false,
@@ -112,7 +126,7 @@ export default function App() {
   const [form, setForm] = useState(makeInitialForm());
   const [originalForm, setOriginalForm] = useState(makeInitialForm());
 
-  const [mode, setMode] = useState(Platform.OS === 'web' ? 'auth' : 'editor');
+  const [mode, setMode] = useState(initialModeWeb);
   const [authMode, setAuthMode] = useState('login');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
@@ -120,14 +134,14 @@ export default function App() {
   const [authLastName, setAuthLastName] = useState('');
   const [authPhone, setAuthPhone] = useState('');
   const [showAuthPassword, setShowAuthPassword] = useState(false);
-  const [userId, setUserIdState] = useState(null);
+  const [userId, setUserIdState] = useState(initialUserIdWeb);
   const [userName, setUserName] = useState(null);
   const [currentId, setCurrentId] = useState(null);
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
   const [route, setRoute] = useState(
-    Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.pathname || '/' : '/'
+    Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.pathname || '/home' : '/home'
   );
 
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
@@ -148,7 +162,6 @@ export default function App() {
   const locClienteRef = useRef(null);
   const locCtoRef = useRef(null);
   const locCasaRef = useRef(null);
-
 
   const clearAuthFields = () => {
     setAuthEmail('');
@@ -174,6 +187,19 @@ export default function App() {
     setAuthPhone('');
     setAuthMode('login');
     setMode('auth');
+    try {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        try { window.localStorage.removeItem('sessionStartedAt'); } catch {}
+        try { window.localStorage.removeItem('sessionUserId'); } catch {}
+      }
+    } catch {}
+    try {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.permissions && navigator.permissions.revoke) {
+        try { await navigator.permissions.revoke({ name: 'geolocation' }); } catch {}
+      } else {
+        try { await Linking.openSettings(); } catch {}
+      }
+    } catch {}
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       window.history.pushState({}, '', '/login');
       setRoute('/login');
@@ -188,21 +214,66 @@ export default function App() {
           const ready = typeof isSupabaseReady === 'function' ? isSupabaseReady() : true;
           const u = await getCurrentUser();
           if (u && u.id) {
-            setUserIdState(u.id);
-            await setUserId(u.id);
+            let sessionOk = true;
             try {
-              const p = await getProfile(u.id);
-              const nm = [p?.first_name, p?.last_name].filter(Boolean).join(' ').trim();
-              setUserName(nm || p?.first_name || null);
+              const startedRaw = typeof window !== 'undefined' ? window.localStorage.getItem('sessionStartedAt') : null;
+              const started = Number(startedRaw || '0');
+              const now = Date.now();
+              const eightHours = 8 * 60 * 60 * 1000;
+              if (!started || now - started > eightHours) {
+                sessionOk = false;
+                try { await signOut(); } catch {}
+              }
             } catch {}
-            await refreshList();
-          } else {
-            if (typeof window !== 'undefined') {
+            if (sessionOk) {
+              setUserIdState(u.id);
+              await setUserId(u.id);
+              try {
+                const p = await getProfile(u.id);
+                const nm = [p?.first_name, p?.last_name].filter(Boolean).join(' ').trim();
+                setUserName(nm || p?.first_name || null);
+              } catch {}
+              await refreshList();
+            } else {
+              try { window.localStorage.removeItem('sessionStartedAt'); } catch {}
               window.history.replaceState({}, '', '/login');
               setRoute('/login');
+              setAuthMode('login');
+              setMode('auth');
             }
-            setAuthMode('login');
-            setMode('auth');
+          } else {
+            let lsUserId = null;
+            let lsStarted = 0;
+            try {
+              lsUserId = window.localStorage.getItem('sessionUserId');
+              lsStarted = Number(window.localStorage.getItem('sessionStartedAt') || '0');
+            } catch {}
+            const now2 = Date.now();
+            const eightHours2 = 8 * 60 * 60 * 1000;
+            if (lsUserId && lsStarted && now2 - lsStarted <= eightHours2) {
+              setUserIdState(lsUserId);
+              await setUserId(lsUserId);
+              if (ready) {
+                try {
+                  const p = await getProfile(lsUserId);
+                  const nm = [p?.first_name, p?.last_name].filter(Boolean).join(' ').trim();
+                  setUserName(nm || p?.first_name || null);
+                } catch {}
+              }
+              if (typeof window !== 'undefined') {
+                window.history.replaceState({}, '', '/home');
+                setRoute('/home');
+              }
+              setMode('editor');
+              await refreshList();
+            } else {
+              if (typeof window !== 'undefined') {
+                window.history.replaceState({}, '', '/login');
+                setRoute('/login');
+              }
+              setAuthMode('login');
+              setMode('auth');
+            }
           }
         } else {
           const uid = await getOrCreateUserId();
@@ -221,15 +292,19 @@ export default function App() {
   useEffect(() => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       const sync = () => {
-        const p = window.location.pathname || '/';
+        let p = window.location.pathname || '/home';
+        if (p === '/') {
+          window.history.replaceState({}, '', '/home');
+          p = '/home';
+        }
         setRoute(p);
         if (p === '/login') {
           setAuthMode('login');
           setMode('auth');
-        } else if (p === '/cadastro') {
+        } else if (p === '/cadastrar') {
           setAuthMode('register');
           setMode('auth');
-        } else if (p === '/lista') {
+        } else if (p === '/checklists') {
           setMode('list');
         } else {
           setMode('editor');
@@ -259,7 +334,7 @@ export default function App() {
 
   useEffect(() => {
     if (Platform.OS === 'web') {
-      if (!userId && (route === '/' || route === '/lista')) {
+      if (!loading && !userId && (route === '/home' || route === '/checklists')) {
         if (typeof window !== 'undefined') {
           window.history.replaceState({}, '', '/login');
           setRoute('/login');
@@ -268,7 +343,7 @@ export default function App() {
         setMode('auth');
       }
     }
-  }, [userId, route]);
+  }, [userId, route, loading]);
 
   const refreshList = async () => {
     const rows = await listChecklists();
@@ -325,172 +400,54 @@ export default function App() {
   const useCurrentLocation = async (fieldKey) => {
     setIsLocating(true);
     setLocatingKey(fieldKey);
-    if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.geolocation) {
-      try {
-        if (navigator.permissions && navigator.permissions.query) {
+    try {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.geolocation) {
+        const opts = { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 };
+        let pos = null;
+        try {
+          pos = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, opts));
+        } catch (e) {
           try {
-            const p = await navigator.permissions.query({ name: 'geolocation' });
-            if (p.state === 'denied') {
-              setBannerType('error');
-              setSaveModalMessage('Permissão de localização negada no navegador. Ative e tente novamente.');
-              setSaveModalVisible(true);
-              setIsLocating(false);
-              setLocatingKey(null);
-              return;
-            }
-          } catch {}
-        }
-        const opts = { enableHighAccuracy: true, timeout: 25000, maximumAge: 0 };
-        let pos = await new Promise((resolve, reject) =>
-          navigator.geolocation.getCurrentPosition(resolve, reject, opts)
-        );
-        let best = pos;
-        const acc = best?.coords?.accuracy;
-        if (typeof acc === 'number' && acc > 30) {
-          try {
-            await new Promise((resolve) => {
-              let done = false;
+            pos = await new Promise((resolve, reject) => {
               const id = navigator.geolocation.watchPosition(
-                (p) => {
-                  if (!best || (p?.coords?.accuracy || Infinity) < (best?.coords?.accuracy || Infinity)) {
-                    best = p;
-                  }
-                  if (p?.coords?.accuracy && p.coords.accuracy <= 20) {
-                    navigator.geolocation.clearWatch(id);
-                    done = true;
-                    resolve(null);
-                  }
-                },
-                () => {},
+                (p) => { navigator.geolocation.clearWatch(id); resolve(p); },
+                (err) => { navigator.geolocation.clearWatch(id); reject(err); },
                 { enableHighAccuracy: true, maximumAge: 0 }
               );
-              setTimeout(() => { if (!done) { navigator.geolocation.clearWatch(id); resolve(null); } }, 15000);
+              setTimeout(() => { navigator.geolocation.clearWatch(id); reject({ code: 3 }); }, 15000);
             });
           } catch {}
         }
-        const { latitude, longitude } = best.coords;
+        if (!pos || !pos.coords) { throw new Error('no_position'); }
+        const { latitude, longitude } = pos.coords;
         const link = `https://www.google.com/maps?q=${latitude},${longitude}`;
         setField(fieldKey, link);
-        setIsLocating(false);
-        setLocatingKey(null);
-        return;
-      } catch (e) {
-        try {
-          const pos = await new Promise((resolve, reject) => {
-            const id = navigator.geolocation.watchPosition(
-              (p) => {
-                navigator.geolocation.clearWatch(id);
-                resolve(p);
-              },
-              (err) => {
-                navigator.geolocation.clearWatch(id);
-                reject(err);
-              },
-              { enableHighAccuracy: true, maximumAge: 0 }
-            );
-            setTimeout(() => {
-              navigator.geolocation.clearWatch(id);
-              reject({ code: 3 });
-            }, 20000);
-          });
-          const { latitude, longitude } = pos.coords;
-          const link = `https://www.google.com/maps?q=${latitude},${longitude}`;
-          setField(fieldKey, link);
-          setIsLocating(false);
-          setLocatingKey(null);
-          return;
-        } catch {}
-        try {
-          const r = await fetch('https://ipapi.co/json/');
-          const j = await r.json();
-          if (j && typeof j.latitude === 'number' && typeof j.longitude === 'number') {
-            const link = `https://www.google.com/maps?q=${j.latitude},${j.longitude}`;
-            setField(fieldKey, link);
-            setIsLocating(false);
-            setLocatingKey(null);
-            return;
-          }
-        } catch {}
-        try {
-          const r2 = await fetch('https://get.geojs.io/v1/ip/geo.json');
-          const j2 = await r2.json();
-          if (j2 && j2.latitude && j2.longitude) {
-            const link = `https://www.google.com/maps?q=${j2.latitude},${j2.longitude}`;
-            setField(fieldKey, link);
-            setIsLocating(false);
-            setLocatingKey(null);
-            return;
-          }
-        } catch {}
-        const msg = e && e.code === 1
-          ? 'Permissão de localização negada no navegador.'
-          : e && e.code === 2
-          ? 'Localização indisponível no navegador.'
-          : 'Tempo excedido ou erro ao obter localização no navegador.';
-        setBannerType('error');
-        setSaveModalMessage(msg);
-        setSaveModalVisible(true);
-        setIsLocating(false);
-        setLocatingKey(null);
-        return;
-      }
-    }
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setBannerType('error');
-        setSaveModalMessage('Permissão de localização negada.');
-        setSaveModalVisible(true);
-        setIsLocating(false);
-        setLocatingKey(null);
-        return;
-      }
-      let pos = null;
-      try {
-        pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.BestForNavigation });
-      } catch (e) {
-        pos = await Location.getLastKnownPositionAsync();
-      }
-      if (!pos || !pos.coords) {
-        let got = null;
-        try {
-          let resolved = false;
-          const sub = await Location.watchPositionAsync(
-            { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 1500, distanceInterval: 0 },
-            (p) => {
-              if (!resolved && p && p.coords) {
-                resolved = true;
-                got = p;
-                sub.remove();
-              }
-            }
-          );
-          await new Promise((r) => setTimeout(r, 20000));
-          if (!resolved) sub.remove();
-        } catch {}
-        if (!got || !got.coords) {
+      } else {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
           setBannerType('error');
-          setSaveModalMessage('Localização indisponível no dispositivo.');
+          setSaveModalMessage('Permissão de localização negada.');
           setSaveModalVisible(true);
           setIsLocating(false);
           setLocatingKey(null);
           return;
         }
-        pos = got;
+        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        const { latitude, longitude } = pos.coords;
+        const link = `https://www.google.com/maps?q=${latitude},${longitude}`;
+        setField(fieldKey, link);
       }
-      const { latitude, longitude } = pos.coords;
-      const link = `https://www.google.com/maps?q=${latitude},${longitude}`;
-      setField(fieldKey, link);
-      setIsLocating(false);
-      setLocatingKey(null);
     } catch (e) {
       setBannerType('error');
       setSaveModalMessage('Falha ao obter localização.');
       setSaveModalVisible(true);
+    } finally {
       setIsLocating(false);
       setLocatingKey(null);
     }
   };
+
+  
 
   const ToggleYesNo = ({ value, onChange }) => (
     <View style={styles.toggleRow}>
@@ -883,7 +840,7 @@ export default function App() {
   }, [list]);
 
   const actionLabel = currentId ? 'Salvar alterações' : 'Criar checklist';
-  const wantsAuthRoute = Platform.OS === 'web' && (route === '/login' || route === '/cadastro');
+  const wantsAuthRoute = Platform.OS === 'web' && (route === '/login' || route === '/cadastrar');
   const effectiveMode = Platform.OS === 'web' && (!userId || wantsAuthRoute) ? 'auth' : mode;
 
   const Header = () => (
@@ -899,7 +856,7 @@ export default function App() {
           {effectiveMode !== 'auth' ? (
             <>
               {effectiveMode === 'editor' ? (
-                <Pressable style={styles.headerBtn} onPress={async () => { try { setIsNavigatingList(true); if (Platform.OS === 'web') { window.history.pushState({}, '', '/lista'); setRoute('/lista'); setMode('list'); } else { setMode('list'); } await refreshList(); } finally { setIsNavigatingList(false); } }}>
+                <Pressable style={styles.headerBtn} onPress={async () => { try { setIsNavigatingList(true); if (Platform.OS === 'web') { window.history.pushState({}, '', '/checklists'); setRoute('/checklists'); setMode('list'); } else { setMode('list'); } await refreshList(); } finally { setIsNavigatingList(false); } }}>
                   {isNavigatingList ? (
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
@@ -907,7 +864,7 @@ export default function App() {
                   )}
                 </Pressable>
               ) : (
-                <Pressable style={styles.headerBtn} onPress={() => { resetUIForNew(); if (Platform.OS === 'web') { window.history.pushState({}, '', '/'); setRoute('/'); setMode('editor'); } else { setMode('editor'); } }}>
+                <Pressable style={styles.headerBtn} onPress={() => { resetUIForNew(); if (Platform.OS === 'web') { window.history.pushState({}, '', '/home'); setRoute('/home'); setMode('editor'); } else { setMode('editor'); } }}>
                   <Text style={styles.headerBtnText}>Voltar</Text>
                 </Pressable>
               )}
@@ -1038,7 +995,7 @@ export default function App() {
           <View style={[styles.content, styles.contentAuth]}>
             <View style={styles.authBox}>
             
-            <Text style={styles.title}>{authMode === 'login' ? 'Entrar' : 'Cadastrar'}</Text>
+            <Text style={styles.title}>{authMode === 'login' ? 'Login' : 'Cadastrar'}</Text>
             {authMode === 'register' ? (
               <>
                 <TextInput
@@ -1135,6 +1092,7 @@ export default function App() {
                     if (u && u.id) {
                       setUserIdState(u.id);
                       await setUserId(u.id);
+                      try { if (Platform.OS === 'web' && typeof window !== 'undefined') { window.localStorage.setItem('sessionStartedAt', String(Date.now())); window.localStorage.setItem('sessionUserId', u.id); } } catch {}
                       try {
                         const p = await getProfile(u.id);
                         const nm = [p?.first_name, p?.last_name].filter(Boolean).join(' ').trim();
@@ -1143,8 +1101,8 @@ export default function App() {
                       setErrorMessage(null);
                       if (Platform.OS === 'web') {
                         setTimeout(() => {
-                          window.history.pushState({}, '', '/');
-                          setRoute('/');
+                          window.history.pushState({}, '', '/home');
+                          setRoute('/home');
                           setMode('editor');
                         }, 80);
                       } else {
@@ -1228,7 +1186,7 @@ export default function App() {
               style={[styles.btnSecondary, { marginTop: 8 }]}
               onPress={() => {
                 if (Platform.OS === 'web') {
-                  const to = authMode === 'login' ? '/cadastro' : '/login';
+                  const to = authMode === 'login' ? '/cadastrar' : '/login';
                   window.history.pushState({}, '', to);
                   setRoute(to);
                   setAuthMode(authMode === 'login' ? 'register' : 'login');
@@ -1277,8 +1235,8 @@ export default function App() {
           </View>
         </ScrollView>
       ) : (
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.content}>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.content}>
         {/* Removido o rótulo "Usuário:"; nome agora aparece no topo */}
 
           {/* 1) Dados do cliente */}
@@ -1314,13 +1272,13 @@ export default function App() {
 
             <Text style={styles.label}>📍 Localização (link do Maps)</Text>
             <View style={styles.row}>
-              <View style={{ flex: 1 }} pointerEvents={Platform.OS === 'web' ? 'none' : 'auto'}>
+              <View style={{ flex: 1 }}>
                 <TextInput
                   style={[
                     styles.input,
                     styles.inputInline,
                     { flex: 1 },
-                  form.locClienteLink ? styles.inputLinkReady : null,
+                    form.locClienteLink ? styles.inputLinkReady : null,
                   ]}
                   placeholder="https://www.google.com/maps?..."
                   placeholderTextColor="#9aa0b5"
@@ -1342,11 +1300,12 @@ export default function App() {
                 />
               </View>
               <Pressable style={[styles.btn, styles.btnInline]} onPress={() => useCurrentLocation('locClienteLink')} disabled={isLocating}>
-                {isLocating && locatingKey === 'locClienteLink' ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.btnText}>Puxar Localização</Text>
-                )}
+                <View style={{ justifyContent: 'center', alignItems: 'center' }}>
+                  {isLocating && locatingKey === 'locClienteLink' ? (
+                    <ActivityIndicator color="#fff" style={{ position: 'absolute' }} />
+                  ) : null}
+                  <Text style={[styles.btnText, isLocating && locatingKey === 'locClienteLink' ? { opacity: 0 } : null]}>Puxar Localização</Text>
+                </View>
               </Pressable>
             </View>
           </Section>
@@ -1359,7 +1318,7 @@ export default function App() {
           >
             <Text style={styles.label}>📍 Localização da CTO (link do Maps)</Text>
             <View style={styles.row}>
-              <View style={{ flex: 1 }} pointerEvents={Platform.OS === 'web' ? 'none' : 'auto'}>
+              <View style={{ flex: 1 }}>
                 <TextInput
                   style={[
                     styles.input,
@@ -1387,11 +1346,12 @@ export default function App() {
                 />
               </View>
               <Pressable style={[styles.btn, styles.btnInline]} onPress={() => useCurrentLocation('locCtoLink')} disabled={isLocating}>
-                {isLocating && locatingKey === 'locCtoLink' ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.btnText}>Puxar Localização</Text>
-                )}
+                <View style={{ justifyContent: 'center', alignItems: 'center' }}>
+                  {isLocating && locatingKey === 'locCtoLink' ? (
+                    <ActivityIndicator color="#fff" style={{ position: 'absolute' }} />
+                  ) : null}
+                  <Text style={[styles.btnText, isLocating && locatingKey === 'locCtoLink' ? { opacity: 0 } : null]}>Puxar Localização</Text>
+                </View>
               </Pressable>
             </View>
 
@@ -1446,7 +1406,7 @@ export default function App() {
           >
             <Text style={styles.label}>📍 Localização da casa (link do Maps)</Text>
             <View style={styles.row}>
-              <View style={{ flex: 1 }} pointerEvents={Platform.OS === 'web' ? 'none' : 'auto'}>
+              <View style={{ flex: 1 }}>
                 <TextInput
                   style={[
                     styles.input,
@@ -1474,11 +1434,12 @@ export default function App() {
                 />
               </View>
               <Pressable style={[styles.btn, styles.btnInline]} onPress={() => useCurrentLocation('locCasaLink')} disabled={isLocating}>
-                {isLocating && locatingKey === 'locCasaLink' ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.btnText}>Puxar Localização</Text>
-                )}
+                <View style={{ justifyContent: 'center', alignItems: 'center' }}>
+                  {isLocating && locatingKey === 'locCasaLink' ? (
+                    <ActivityIndicator color="#fff" style={{ position: 'absolute' }} />
+                  ) : null}
+                  <Text style={[styles.btnText, isLocating && locatingKey === 'locCasaLink' ? { opacity: 0 } : null]}>Puxar Localização</Text>
+                </View>
               </Pressable>
             </View>
 
@@ -1608,6 +1569,7 @@ export default function App() {
         </View>
         </ScrollView>
       )}
+      
       <StatusBar style="auto" />
     </SafeAreaView>
     </SafeAreaProvider>
