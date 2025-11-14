@@ -1593,7 +1593,7 @@ export default function App() {
           <View style={styles.content}>
             <Text style={styles.title}>Checklists</Text>
             {Object.keys(groupedMonths).length === 0 && (
-              <Text style={styles.emptyListText}>Nenhum checklist para exibir ainda.</Text>
+              <Text style={styles.emptyListText}>Nenhum checklist pra exibir ainda.</Text>
             )}
             {Object.entries(groupedMonths).map(([key, group]) => (
               <Section
