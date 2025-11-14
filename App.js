@@ -571,7 +571,16 @@ export default function App() {
         } catch {}
       } else {
         const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') { return; }
+        if (status !== 'granted') {
+          Alert.alert('Permissão negada', 'Ative a permissão de localização nas configurações do sistema para continuar.');
+          return;
+        }
+        try {
+          const provider = await Location.getProviderStatusAsync();
+          if (!provider?.locationServicesEnabled) {
+            Alert.alert('Serviços de localização desligados', 'Ative GPS/Serviços de localização no aparelho para obter sua posição.');
+          }
+        } catch {}
         let best = null;
         let resolveFn;
         const done = new Promise((resolve) => { resolveFn = resolve; });
@@ -580,16 +589,32 @@ export default function App() {
           (p) => {
             const acc = typeof p?.coords?.accuracy === 'number' ? p.coords.accuracy : null;
             if (!best || (acc != null && acc < (best?.coords?.accuracy ?? Infinity))) best = p;
-            if (acc != null && acc <= 20) resolveFn(p);
+            if (acc != null && acc <= 50) resolveFn(p);
           }
         );
-        setTimeout(() => resolveFn(best), 6000);
+        setTimeout(() => resolveFn(best), 12000);
         const finalPos = await done;
         try { sub?.remove(); } catch {}
-        if (finalPos?.coords?.latitude && finalPos?.coords?.longitude) {
-          const lat = Number(finalPos.coords.latitude).toFixed(6);
-          const lng = Number(finalPos.coords.longitude).toFixed(6);
+        if (!(finalPos?.coords?.latitude && finalPos?.coords?.longitude)) {
+          try {
+            const single = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest, maximumAge: 10000 });
+            if (!best || (typeof single?.coords?.accuracy === 'number' && single.coords.accuracy < (best?.coords?.accuracy ?? Infinity))) {
+              best = single;
+            }
+          } catch {}
+        }
+        if (!(best?.coords?.latitude && best?.coords?.longitude)) {
+          try {
+            const last = await Location.getLastKnownPositionAsync();
+            if (last?.coords?.latitude && last?.coords?.longitude) { best = last; }
+          } catch {}
+        }
+        if (best?.coords?.latitude && best?.coords?.longitude) {
+          const lat = Number(best.coords.latitude).toFixed(6);
+          const lng = Number(best.coords.longitude).toFixed(6);
           setField(fieldKey, `https://www.google.com/maps?q=${lat},${lng}`);
+        } else {
+          Alert.alert('Erro', 'Não foi possível obter sua localização no aparelho.');
         }
       }
     } catch {}
