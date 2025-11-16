@@ -147,7 +147,7 @@ const extractOrAcceptMapsLink = (s) => {
 };
 const isStrongPassword = (s) => {
   if (!s || s.length < 12) return false;
-  if (!/[A-Za-z]/.test(s)) return false;
+  if (!/[a-z]/.test(s)) return false;
   if (!/[A-Z]/.test(s)) return false;
   if (!/[0-9]/.test(s)) return false;
   if (!/[^A-Za-z0-9]/.test(s)) return false;
@@ -169,6 +169,30 @@ const isValidUrl = (s) => {
 const isUuid = (s) => {
   const v = (s || '').trim();
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+};
+const PasswordChecklist = ({ value }) => {
+  const v = String(value || '');
+  const okLen = v.length >= 12;
+  const okLower = /[a-z]/.test(v);
+  const okUpper = /[A-Z]/.test(v);
+  const okNum = /[0-9]/.test(v);
+  const okSpecial = /[^A-Za-z0-9]/.test(v);
+  const Item = ({ ok, text }) => (
+    <View style={[styles.row, { marginBottom: 4 }]}> 
+      <Feather name={ok ? 'check-circle' : 'x-circle'} size={16} color={ok ? '#16a34a' : '#b91c1c'} />
+      <Text style={{ fontSize: 12, color: ok ? '#16a34a' : '#b91c1c' }}>{text}</Text>
+    </View>
+  );
+  return (
+    <View style={{ marginTop: 4, marginBottom: 8 }}>
+      <Text style={[styles.label, styles.labelMuted]}>Requisitos da senha:</Text>
+      <Item ok={okLen} text="Pelo menos 12 caracteres" />
+      <Item ok={okLower} text="Pelo menos 1 letra minúscula" />
+      <Item ok={okUpper} text="Pelo menos 1 letra maiúscula" />
+      <Item ok={okNum} text="Pelo menos 1 número" />
+      <Item ok={okSpecial} text="Pelo menos 1 caractere especial" />
+    </View>
+  );
 };
 const formatCpfBR = (s) => {
   const d = (s || '').replace(/\D+/g, '');
@@ -1440,11 +1464,7 @@ export default function App() {
                   <Feather name={showEditPassword ? 'eye' : 'eye-off'} size={18} color="#666" />
                 </Pressable>
               </View>
-              <View style={styles.inputHelpArea}>
-                {editNewPassword && editNewPassword.length >= 12 && !isStrongPassword(editNewPassword) ? (
-                  <Text style={styles.inputHelpError}>A senha deve ter 12+ chars, maiúscula, números e símbolo.</Text>
-                ) : null}
-              </View>
+              <PasswordChecklist value={editNewPassword} />
             </>
           <View style={styles.row}>
               <Pressable
@@ -1459,7 +1479,7 @@ export default function App() {
                 const phoneDigits = (editPhone || '').replace(/\D+/g, '');
                 const email = (editEmail || '').trim();
                 const passOk = !editNewPassword || isStrongPassword(editNewPassword);
-                const ready = !!firstName && !!lastName && phoneDigits.length === 11 && isValidEmail(email) && passOk;
+                const ready = !!firstName && !!lastName && phoneDigits.length >= 10 && phoneDigits.length <= 11 && isValidEmail(email) && passOk;
                 return (
                   <Pressable
                     style={[styles.btn, (!ready) && styles.btnDisabled, { flex: 1 }]}
@@ -1564,26 +1584,29 @@ export default function App() {
               textContentType="none"
             />
             {authMode === 'register' ? (
-              <View style={styles.inputWrapper}>
-                <TextInput
-                  style={[styles.input, styles.inputWithIcon]}
-                  value={authPassword}
-                  onChangeText={setAuthPassword}
-                  secureTextEntry={!showAuthPassword}
-                  placeholder="Senha"
-                  placeholderTextColor="#9aa0b5"
-                  autoComplete="off"
-                  textContentType="none"
-                />
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={showAuthPassword ? 'Ocultar senha' : 'Mostrar senha'}
-                  style={styles.inputIconBtn}
-                  onPress={() => setShowAuthPassword((v) => !v)}
-                >
-                  <Feather name={showAuthPassword ? 'eye' : 'eye-off'} size={18} color="#666" />
-                </Pressable>
-              </View>
+              <>
+                <View style={styles.inputWrapper}>
+                  <TextInput
+                    style={[styles.input, styles.inputWithIcon]}
+                    value={authPassword}
+                    onChangeText={setAuthPassword}
+                    secureTextEntry={!showAuthPassword}
+                    placeholder="Senha"
+                    placeholderTextColor="#9aa0b5"
+                    autoComplete="off"
+                    textContentType="none"
+                  />
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={showAuthPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                    style={styles.inputIconBtn}
+                    onPress={() => setShowAuthPassword((v) => !v)}
+                  >
+                    <Feather name={showAuthPassword ? 'eye' : 'eye-off'} size={18} color="#666" />
+                  </Pressable>
+                </View>
+                <PasswordChecklist value={authPassword} />
+              </>
             ) : (
               <TextInput
                 style={styles.input}
@@ -1602,7 +1625,7 @@ export default function App() {
               const phoneDigits = (authPhone || '').replace(/\D+/g, '');
               const cpfDigitsInline = (authCpf || '').replace(/\D+/g, '');
               const loginReady = isValidEmail(email) && (authPassword || '').length >= 12;
-              const registerReady = isValidEmail(email) && isStrongPassword(authPassword) && phoneDigits.length === 11 && !!authFirstName && !!authLastName && cpfDigitsInline.length === 11;
+              const registerReady = isValidEmail(email) && isStrongPassword(authPassword) && phoneDigits.length >= 10 && phoneDigits.length <= 11 && !!authFirstName && !!authLastName && cpfDigitsInline.length === 11;
               return (
             <View style={styles.row}>
               {authMode === 'login' ? (
@@ -1659,9 +1682,9 @@ export default function App() {
                   try {
                     const digits = (authPhone || '').replace(/\D+/g, '');
                     const cpfDigits = (authCpf || '').replace(/\D+/g, '');
-                    if (!authFirstName || !authLastName || !authEmail || !authPassword || digits.length !== 11 || cpfDigits.length !== 11) {
+                    if (!authFirstName || !authLastName || !authEmail || !authPassword || digits.length < 10 || digits.length > 11 || cpfDigits.length !== 11) {
                       setBannerType('warn');
-                      setSaveModalMessage('Preencha todos os campos, telefone (11 dígitos) e CPF completo (11 dígitos).');
+                      setSaveModalMessage('Preencha todos os campos, telefone (10 ou 11 dígitos) e CPF completo (11 dígitos).');
                       setSaveModalVisible(true);
                       return;
                     }
@@ -1700,14 +1723,36 @@ export default function App() {
                       setAuthEmail(authEmail.trim());
                       setAuthPassword(authPassword);
                       setShowAuthPassword(false);
-                      if (Platform.OS === 'web') { window.history.pushState({}, '', '/login'); setRoute('/login'); setAuthMode('login'); setMode('auth'); }
+                      if (Platform.OS === 'web') {
+                        window.history.pushState({}, '', '/login');
+                        setRoute('/login');
+                        setAuthMode('login');
+                        setMode('auth');
+                      } else {
+                        setTimeout(() => {
+                          setAuthMode('login');
+                          setMode('auth');
+                        }, 80);
+                      }
                       await refreshList();
                     } else if (u && u.id && Platform.OS === 'web') {
                       setErrorMessage('Conta criada. Verifique seu e‑mail para confirmar e depois faça login.');
+                      setAuthEmail(authEmail.trim());
+                      setAuthPassword(authPassword);
+                      setShowAuthPassword(false);
                       window.history.pushState({}, '', '/login');
                       setRoute('/login');
                       setAuthMode('login');
                       setMode('auth');
+                    } else if (u && u.id && Platform.OS !== 'web') {
+                      setErrorMessage('Conta criada. Verifique seu e‑mail para confirmar e depois faça login.');
+                      setAuthEmail(authEmail.trim());
+                      setAuthPassword(authPassword);
+                      setShowAuthPassword(false);
+                      setTimeout(() => {
+                        setAuthMode('login');
+                        setMode('auth');
+                      }, 80);
                     } else {
                       const raw = (res?.error || '').toLowerCase();
                       const pretty = raw.includes('already') || raw.includes('exists') || raw.includes('registered') ? 'E‑mail já cadastrado.' : (res?.error || 'Não foi possível cadastrar.');
