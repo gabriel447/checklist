@@ -39,6 +39,17 @@ export async function getOrCreateUserId() {
   return data?.user?.id || null;
 }
 
+export function onAuthStateChange(callback) {
+  const client = getClient();
+  if (!client || typeof callback !== 'function') return () => {};
+  const { data: subscription } = client.auth.onAuthStateChange((event, session) => {
+    try { callback(event, session); } catch {}
+  });
+  return () => {
+    try { subscription?.unsubscribe?.(); } catch {}
+  };
+}
+
 export async function setUserId() {
   return true;
 }

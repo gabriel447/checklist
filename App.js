@@ -24,24 +24,25 @@ import * as Clipboard from 'expo-clipboard';
 import * as FileSystem from 'expo-file-system';
 import { shareAsync } from 'expo-sharing';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
-import {
-  initDB,
-  listChecklists,
-  getChecklist,
-  saveChecklist,
-  updateChecklist,
-  deleteChecklist,
-  setUserId,
-  getCurrentUser,
-  signIn,
-  signUp,
-  signOut,
-  getProfile,
-  isSupabaseReady,
-  updateProfile,
-  updateAuth,
-  findUserByCpf,
-} from './db.mobile';
+  import {
+    initDB,
+    listChecklists,
+    getChecklist,
+    saveChecklist,
+    updateChecklist,
+    deleteChecklist,
+    setUserId,
+    getCurrentUser,
+    signIn,
+    signUp,
+    signOut,
+    getProfile,
+    isSupabaseReady,
+    updateProfile,
+    updateAuth,
+    findUserByCpf,
+    onAuthStateChange,
+  } from './db.mobile';
 
 const makeInitialForm = () => ({
   nome: '',
@@ -259,7 +260,7 @@ export default function App() {
     return null;
   })() : null;
   const initialModeWeb = Platform.OS === 'web'
-    ? ((initialUserIdWeb && typeof window !== 'undefined' && window.location && window.location.pathname && window.location.pathname !== '/login' && window.location.pathname !== '/cadastrar') ? 'editor' : 'auth')
+    ? ((initialUserIdWeb && typeof window !== 'undefined' && window.location && window.location.pathname && window.location.pathname !== '/login' && window.location.pathname !== '/cadastrar' && window.location.pathname !== '/reset') ? 'editor' : 'auth')
     : 'auth';
   const [expanded, setExpanded] = useState({
     cliente: true,
@@ -275,6 +276,7 @@ export default function App() {
   const [authMode, setAuthMode] = useState('login');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
+  const [authPasswordConfirm, setAuthPasswordConfirm] = useState('');
   const [authFirstName, setAuthFirstName] = useState('');
   const [authLastName, setAuthLastName] = useState('');
   const [authPhone, setAuthPhone] = useState('');
@@ -478,6 +480,12 @@ export default function App() {
         } else if (p === '/cadastrar') {
           setAuthMode('register');
           setMode('auth');
+        } else if (p === '/reset') {
+          setAuthMode('reset');
+          setMode('auth');
+        } else if (p === '/alterar-senha') {
+          setAuthMode('update_password');
+          setMode('auth');
         } else if (p === '/checklists') {
           setMode('list');
         } else {
@@ -485,7 +493,17 @@ export default function App() {
         }
       };
       window.addEventListener('popstate', sync);
-      return () => window.removeEventListener('popstate', sync);
+      const unsubscribe = typeof onAuthStateChange === 'function' ? onAuthStateChange((event) => {
+        if (event === 'PASSWORD_RECOVERY') {
+          try {
+            window.history.pushState({}, '', '/alterar-senha');
+            setRoute('/alterar-senha');
+            setAuthMode('update_password');
+            setMode('auth');
+          } catch {}
+        }
+      }) : () => {};
+      return () => { window.removeEventListener('popstate', sync); try { unsubscribe(); } catch {} };
     }
     return () => {};
   }, []);
@@ -1283,7 +1301,7 @@ export default function App() {
   const [expandedMonths, setExpandedMonths] = useState({});
 
   const actionLabel = currentId ? 'Salvar Alterações' : 'Criar Checklist';
-  const wantsAuthRoute = Platform.OS === 'web' && (route === '/login' || route === '/cadastrar');
+  const wantsAuthRoute = Platform.OS === 'web' && (route === '/login' || route === '/cadastrar' || route === '/reset');
   const effectiveMode = Platform.OS === 'web' && (!userId || wantsAuthRoute) ? 'auth' : mode;
   const canSubmit = currentId ? true : createReady;
 
@@ -1528,7 +1546,7 @@ export default function App() {
           <View style={[styles.content, styles.contentAuth]}>
             <View style={styles.authBox}>
             
-            <Text style={styles.title}>{authMode === 'login' ? 'Login' : 'Cadastrar'}</Text>
+            <Text style={styles.title}>{authMode === 'login' ? 'Login' : authMode === 'register' ? 'Cadastrar' : authMode === 'reset' ? 'Recuperar senha' : 'Alterar senha'}</Text>
             
             {authMode === 'register' ? (
               <>
@@ -1607,7 +1625,7 @@ export default function App() {
                 </View>
                 <PasswordChecklist value={authPassword} />
               </>
-            ) : (
+            ) : authMode === 'login' ? (
               <TextInput
                 style={styles.input}
                 value={authPassword}
@@ -1618,7 +1636,59 @@ export default function App() {
                 autoComplete="off"
                 textContentType="none"
               />
-            )}
+            ) : authMode === 'update_password' ? (
+              <>
+                <View style={styles.inputWrapper}>
+                  <TextInput
+                    style={[styles.input, styles.inputWithIcon]}
+                    value={authPassword}
+                    onChangeText={setAuthPassword}
+                    secureTextEntry={!showAuthPassword}
+                    placeholder="Nova senha"
+                    placeholderTextColor="#9aa0b5"
+                    autoComplete="off"
+                    textContentType="none"
+                  />
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={showAuthPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                    style={styles.inputIconBtn}
+                    onPress={() => setShowAuthPassword((v) => !v)}
+                  >
+                    <Feather name={showAuthPassword ? 'eye' : 'eye-off'} size={18} color="#666" />
+                  </Pressable>
+                </View>
+                <PasswordChecklist value={authPassword} />
+                <TextInput
+                  style={styles.input}
+                  value={authPasswordConfirm}
+                  onChangeText={setAuthPasswordConfirm}
+                  secureTextEntry
+                  placeholder="Confirmar nova senha"
+                  placeholderTextColor="#9aa0b5"
+                  autoComplete="off"
+                  textContentType="none"
+                />
+              </>
+            ) : null}
+            {authMode === 'login' ? (
+              <Pressable
+                onPress={() => {
+                  if (Platform.OS === 'web') {
+                    window.history.pushState({}, '', '/reset');
+                    setRoute('/reset');
+                    setAuthMode('reset');
+                    setMode('auth');
+                  } else {
+                    setAuthMode('reset');
+                    setMode('auth');
+                  }
+                }}
+                style={{ alignSelf: 'flex-start' }}
+              >
+                <Text style={styles.linkSmall}>Esqueci minha senha</Text>
+              </Pressable>
+            ) : null}
             
             {(() => {
               const email = (authEmail || '').trim();
@@ -1626,8 +1696,10 @@ export default function App() {
               const cpfDigitsInline = (authCpf || '').replace(/\D+/g, '');
               const loginReady = isValidEmail(email) && (authPassword || '').length >= 12;
               const registerReady = isValidEmail(email) && isStrongPassword(authPassword) && phoneDigits.length >= 10 && phoneDigits.length <= 11 && !!authFirstName && !!authLastName && cpfDigitsInline.length === 11;
+              const resetReady = isValidEmail(email);
+              const updateReady = isStrongPassword(authPassword) && authPasswordConfirm === authPassword;
               return (
-            <View style={styles.row}>
+            <View style={[styles.row, authMode === 'reset' ? styles.rowReset : null]}>
               {authMode === 'login' ? (
                 <Pressable style={[styles.btn, (!loginReady || isAuthSubmitting) && styles.btnDisabled, { flex: 1 }]} disabled={!loginReady || isAuthSubmitting} onPress={async () => {
                   setIsAuthSubmitting(true);
@@ -1674,6 +1746,72 @@ export default function App() {
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
                     <Text style={styles.btnText}>Entrar</Text>
+                  )}
+                </Pressable>
+              ) : authMode === 'reset' ? (
+                <Pressable style={[styles.btn, (!resetReady || isAuthSubmitting) && styles.btnDisabled, { flex: 1 }]} disabled={!resetReady || isAuthSubmitting} onPress={async () => {
+                  const em = (authEmail || '').trim();
+                  if (!isValidEmail(em)) {
+                    setBannerType('warn');
+                    setSaveModalMessage('Informe um e‑mail válido.');
+                    setSaveModalVisible(true);
+                    return;
+                  }
+                  setIsAuthSubmitting(true);
+                  try {
+                    setBannerType('success');
+                    setSaveModalMessage('Se existir, enviaremos as instruções para redefinição no seu e-mail.');
+                    setSaveModalVisible(true);
+                    if (Platform.OS === 'web') {
+                      window.history.pushState({}, '', '/login');
+                      setRoute('/login');
+                    }
+                    setAuthMode('login');
+                    setMode('auth');
+                  } catch (e) {
+                    setBannerType('error');
+                    setSaveModalMessage('Tente novamente mais tarde.');
+                    setSaveModalVisible(true);
+                  } finally { setIsAuthSubmitting(false); }
+                }}>
+                  {isAuthSubmitting ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.btnText}>Enviar</Text>
+                  )}
+                </Pressable>
+              ) : authMode === 'update_password' ? (
+                <Pressable style={[styles.btn, (!updateReady || isAuthSubmitting) && styles.btnDisabled, { flex: 1 }]} disabled={!updateReady || isAuthSubmitting} onPress={async () => {
+                  setIsAuthSubmitting(true);
+                  try {
+                    if (!isStrongPassword(authPassword) || authPasswordConfirm !== authPassword) {
+                      setBannerType('warn');
+                      setSaveModalMessage('Verifique os requisitos e a confirmação da senha.');
+                      setSaveModalVisible(true);
+                      return;
+                    }
+                    await updateAuth({ password: authPassword });
+                    setBannerType('success');
+                    setSaveModalMessage('Senha atualizada com sucesso.');
+                    setSaveModalVisible(true);
+                    setAuthPassword('');
+                    setAuthPasswordConfirm('');
+                    if (Platform.OS === 'web') {
+                      window.history.pushState({}, '', '/login');
+                      setRoute('/login');
+                    }
+                    setAuthMode('login');
+                    setMode('auth');
+                  } catch (e) {
+                    setBannerType('error');
+                    setSaveModalMessage(e?.message || 'Falha ao atualizar senha.');
+                    setSaveModalVisible(true);
+                  } finally { setIsAuthSubmitting(false); }
+                }}>
+                  {isAuthSubmitting ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.btnText}>Salvar nova senha</Text>
                   )}
                 </Pressable>
               ) : (
@@ -1785,17 +1923,17 @@ export default function App() {
                   const to = authMode === 'login' ? '/cadastrar' : '/login';
                   window.history.pushState({}, '', to);
                   setRoute(to);
-                  setAuthMode(authMode === 'login' ? 'register' : 'login');
+                  setAuthMode('login');
                   setMode('auth');
                   clearAuthFields();
                 } else {
-                  setAuthMode(authMode === 'login' ? 'register' : 'login');
+                  setAuthMode('login');
                   setMode('auth');
                   clearAuthFields();
                 }
               }}
             >
-              <Text style={styles.btnSecondaryText}>{authMode === 'login' ? 'Criar conta' : 'Já tenho conta'}</Text>
+              <Text style={styles.btnSecondaryText}>{(authMode === 'reset' || authMode === 'update_password') ? 'Voltar ao login' : authMode === 'login' ? 'Criar conta' : 'Já tenho conta'}</Text>
             </Pressable>
             </View>
           </View>
@@ -2446,6 +2584,10 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 8,
   },
+  rowReset: {
+    marginTop: 8,
+    marginBottom: 4,
+  },
   rowSpaceBetween: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2611,6 +2753,14 @@ const styles = StyleSheet.create({
   },
   toggleTextActive: {
     color: '#fff',
+  },
+  linkSmall: {
+    fontSize: 12,
+    color: '#2f6fed',
+    textDecorationLine: 'none',
+    marginTop: 4,
+    marginBottom: 8,
+    marginLeft: 0,
   },
   listItem: {
     flexDirection: 'row',
