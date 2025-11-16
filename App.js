@@ -179,13 +179,13 @@ const PasswordChecklist = ({ value }) => {
   const okNum = /[0-9]/.test(v);
   const okSpecial = /[^A-Za-z0-9]/.test(v);
   const Item = ({ ok, text }) => (
-    <View style={[styles.row, { marginBottom: 4 }]}> 
+    <View style={[styles.row, { marginBottom: 6 }]}> 
       <Feather name={ok ? 'check-circle' : 'x-circle'} size={16} color={ok ? '#16a34a' : '#b91c1c'} />
       <Text style={{ fontSize: 12, color: ok ? '#16a34a' : '#b91c1c' }}>{text}</Text>
     </View>
   );
   return (
-    <View style={{ marginTop: 4, marginBottom: 8 }}>
+    <View style={{ marginBottom: 20 }}>
       <Text style={[styles.label, styles.labelMuted]}>Requisitos da senha:</Text>
       <Item ok={okLen} text="Pelo menos 12 caracteres" />
       <Item ok={okLower} text="Pelo menos 1 letra minúscula" />
@@ -1482,7 +1482,9 @@ export default function App() {
                   <Feather name={showEditPassword ? 'eye' : 'eye-off'} size={18} color="#666" />
                 </Pressable>
               </View>
-              <PasswordChecklist value={editNewPassword} />
+              {String(editNewPassword || '').length > 0 ? (
+                <PasswordChecklist value={editNewPassword} />
+              ) : null}
             </>
           <View style={styles.row}>
               <Pressable
@@ -1626,16 +1628,26 @@ export default function App() {
                 <PasswordChecklist value={authPassword} />
               </>
             ) : authMode === 'login' ? (
-              <TextInput
-                style={styles.input}
-                value={authPassword}
-                onChangeText={setAuthPassword}
-                secureTextEntry
-                placeholder="Senha"
-                placeholderTextColor="#9aa0b5"
-                autoComplete="off"
-                textContentType="none"
-              />
+              <View style={styles.inputWrapper}>
+                <TextInput
+                  style={[styles.input, styles.inputWithIcon]}
+                  value={authPassword}
+                  onChangeText={setAuthPassword}
+                  secureTextEntry={!showAuthPassword}
+                  placeholder="Senha"
+                  placeholderTextColor="#9aa0b5"
+                  autoComplete="off"
+                  textContentType="none"
+                />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={showAuthPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                  style={styles.inputIconBtn}
+                  onPress={() => setShowAuthPassword((v) => !v)}
+                >
+                  <Feather name={showAuthPassword ? 'eye' : 'eye-off'} size={18} color="#666" />
+                </Pressable>
+              </View>
             ) : authMode === 'update_password' ? (
               <>
                 <View style={styles.inputWrapper}>
@@ -1923,11 +1935,11 @@ export default function App() {
                   const to = authMode === 'login' ? '/cadastrar' : '/login';
                   window.history.pushState({}, '', to);
                   setRoute(to);
-                  setAuthMode('login');
+                  setAuthMode(authMode === 'login' ? 'register' : 'login');
                   setMode('auth');
                   clearAuthFields();
                 } else {
-                  setAuthMode('login');
+                  setAuthMode(authMode === 'login' ? 'register' : 'login');
                   setMode('auth');
                   clearAuthFields();
                 }
