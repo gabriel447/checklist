@@ -207,21 +207,6 @@ const formatCpfBR = (s) => {
   if (p4) out += '-' + p4;
   return out;
 };
-const isValidCpf = (s) => {
-  const d = (s || '').replace(/\D+/g, '');
-  if (d.length !== 11) return false;
-  if (/^(\d)\1{10}$/.test(d)) return false;
-  const calc = (base, factor) => {
-    let sum = 0;
-    for (let i = 0; i < base.length; i++) sum += Number(base[i]) * (factor - i);
-    const rest = sum % 11;
-    return rest < 2 ? 0 : 11 - rest;
-  };
-  const d1 = calc(d.slice(0, 9), 10);
-  if (d1 !== Number(d[9])) return false;
-  const d2 = calc(d.slice(0, 10), 11);
-  return d2 === Number(d[10]);
-};
 const Section = ({ title, children, expanded, onToggle, style }) => (
   <View style={[styles.section, style]}>
     <Pressable onPress={onToggle} style={styles.sectionHeader}>
@@ -1291,7 +1276,6 @@ export default function App() {
       if (!groups[key]) groups[key] = { label: `${monthNames[m]} ${y}`, items: [] };
       groups[key].items.push(item);
     }
-    // sort keys desc by year-month
     const sorted = Object.fromEntries(
       Object.entries(groups).sort(([a], [b]) => (a > b ? -1 : a < b ? 1 : 0))
     );
@@ -1372,10 +1356,6 @@ export default function App() {
       </View>
     );
   }
-
-  
-
-  
 
   return (
     <SafeAreaProvider>
@@ -1532,8 +1512,6 @@ export default function App() {
           </View>
         </View>
       </Modal>
-
-      
 
       {saveModalVisible ? (
         <View style={styles.bannerWrap}>
@@ -1994,7 +1972,7 @@ export default function App() {
       ) : (
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.content}>
-        {/* Removido o rótulo "Usuário:"; nome agora aparece no topo */}
+        {}
 
           {/* 1) Dados do cliente */}
           <Section
