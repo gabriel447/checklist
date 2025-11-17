@@ -23,7 +23,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as FileSystem from 'expo-file-system';
 import { shareAsync } from 'expo-sharing';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
-import { isStrongPassword, isValidEmail, formatPhoneBR, formatCpfBR } from './utils';
+import { isStrongPassword, isValidEmail, formatPhoneBR, formatCpfBR, toTitleCase, extractOrAcceptMapsLink, isUuid, sanitizeNameInput, getMimeFromUri, toBase64, dataOrRead } from './utils';
   import {
     initDB,
     listChecklists,
@@ -68,90 +68,6 @@ const makeInitialForm = () => ({
   clienteSatisfeito: null,
 });
 
-const toTitleCase = (s) => {
-  if (!s) return '';
-  return s
-    .split(/\s+/)
-    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : ''))
-    .join(' ');
-};
-
-const parseMapsLink = (s) => {
-  const t = String(s || '').trim();
-  if (!t) return null;
-  let m = t.match(/@(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
-  if (m) return { lat: Number(m[1]), lng: Number(m[2]) };
-  m = t.match(/[?&]q=(-?\d+\.?\d*),\s*(-?\d+\.?\d*)/);
-  if (m) return { lat: Number(m[1]), lng: Number(m[2]) };
-  const nums = t.match(/-?\d+\.\d+/g) || [];
-  const cand = nums.map(Number).filter((n) => !Number.isNaN(n));
-  for (let i = 0; i < cand.length - 1; i++) {
-    const a = cand[i], b = cand[i + 1];
-    if (a >= -90 && a <= 90 && b >= -180 && b <= 180) return { lat: a, lng: b };
-  }
-  return null;
-};
-
-const isMapsUrl = (s) => {
-  const t = String(s || '').trim();
-  if (!t) return false;
-  if (!/^https?:\/\//i.test(t)) return false;
-  return /^(https?:\/\/)(maps\.app\.goo\.gl|goo\.gl\/maps|maps\.google\.com|www\.google\.com\/maps)/i.test(t);
-};
-
-const buildMapsLink = (lat, lng) => `https://www.google.com/maps?q=${Number(lat).toFixed(6)},${Number(lng).toFixed(6)}`;
-
-const extractUrlFromText = (s) => {
-  let t = String(s || '').trim();
-  t = t.replace(/^['"`\s]+|['"`\s]+$/g, '');
-  if (!/^https?:\/\//i.test(t)) {
-    const m = t.match(/https?:\/\/\S+/i);
-    if (m) {
-      t = m[0];
-    }
-  }
-  t = t.replace(/[)\]\}>]+$/g, '');
-  return t.trim();
-};
-
-const normalizeTextToUrl = (s) => {
-  const direct = extractUrlFromText(s);
-  if (direct) return direct;
-  const t = String(s || '').trim();
-  const m = t.match(/(maps\.app\.goo\.gl|goo\.gl\/maps|maps\.google\.com|www\.google\.com\/maps)[^\s'"`]+/i);
-  if (m) {
-    const tail = m[0];
-    return `https://${tail}`;
-  }
-  return '';
-};
-
-const extractOrAcceptMapsLink = (s) => {
-  const raw = normalizeTextToUrl(s);
-  const p = parseMapsLink(s);
-  if (p && Number.isFinite(p.lat) && Number.isFinite(p.lng)) {
-    return buildMapsLink(p.lat, p.lng);
-  }
-  if (isMapsUrl(raw)) {
-    return raw;
-  }
-  if (isValidUrl(raw)) {
-    return raw;
-  }
-  return null;
-};
-const isValidUrl = (s) => {
-  try {
-    const u = new URL((s || '').trim());
-    return u.protocol === 'http:' || u.protocol === 'https:';
-  } catch {
-    return false;
-  }
-};
-const isUuid = (s) => {
-  const v = (s || '').trim();
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
-};
 const PasswordChecklist = ({ value }) => {
   const v = String(value || '');
   const okLen = v.length >= 12;
@@ -821,44 +737,12 @@ export default function App() {
 
   const onExportPdf = async () => {
     try {
-      const getMimeFromUri = (uri) => {
-        if (!uri) return 'image/jpeg';
-        const lower = uri.toLowerCase();
-        if (lower.endsWith('.png')) return 'image/png';
-        if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
-        return 'image/jpeg';
-      };
-
-      const toBase64 = async (uri) => {
-        if (!uri) return null;
-        try {
-          const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-          const mime = getMimeFromUri(uri);
-          return `data:${mime};base64,${b64}`;
-        } catch {
-          return null;
-        }
-      };
-
-      const dataOrRead = async (dataUri, uri) => {
-        if (dataUri) return dataUri;
-        if (uri && /^https?:\/\//.test(uri)) return uri;
-        return await toBase64(uri);
-      };
-
       const imgCto = await dataOrRead(form.fotoCtoDataUri, form.fotoCto);
       const imgCasa = await dataOrRead(form.fotoFrenteCasaDataUri, form.fotoFrenteCasa);
       const imgInst = await dataOrRead(form.fotoInstalacaoDataUri, form.fotoInstalacao);
       const imgMac = await dataOrRead(form.fotoMacEquipDataUri, form.fotoMacEquip);
 
       const yesNo = (v) => (v === true ? 'Sim' : v === false ? 'Não' : '—');
-      const capitalizeWords = (s) => {
-        if (!s) return '';
-        return s
-          .split(/\s+/)
-          .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : ''))
-          .join(' ');
-      };
 
       let displayUser = (userName || '').trim();
       let displayEmail = '';
@@ -911,7 +795,7 @@ export default function App() {
 
           <div class="card">
             <div class="cardHeader"><div><span class="badge">1</span><span class="cardTitle">Dados do cliente</span></div></div>
-            ${form.nome ? `<div class="row"><span class="label">Nome completo:</span> ${capitalizeWords(form.nome)}</div>` : ''}
+            ${form.nome ? `<div class="row"><span class="label">Nome completo:</span> ${toTitleCase(form.nome)}</div>` : ''}
             ${form.ruaNumero ? `<div class="row"><span class="label">Rua e número:</span> ${form.ruaNumero}</div>` : ''}
             ${form.locClienteLink ? `<div class="row"><span class="label">Localização (link do Maps):</span> <span class="link"><a href="${form.locClienteLink}">${form.locClienteLink}</a></span></div>` : ''}
           </div>
@@ -975,30 +859,7 @@ export default function App() {
       const row = await getChecklist(id, userId);
       if (!row) return;
 
-      const getMimeFromUri = (uri) => {
-        if (!uri) return 'image/jpeg';
-        const lower = uri.toLowerCase();
-        if (lower.endsWith('.png')) return 'image/png';
-        if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
-        return 'image/jpeg';
-      };
-
-      const toBase64 = async (uri) => {
-        if (!uri) return null;
-        try {
-          const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-          const mime = getMimeFromUri(uri);
-          return `data:${mime};base64,${b64}`;
-        } catch {
-          return null;
-        }
-      };
-
-      const dataOrRead = async (dataUri, uri) => {
-        if (dataUri) return dataUri;
-        if (uri && /^https?:\/\//.test(uri)) return uri;
-        return await toBase64(uri);
-      };
+      
 
       let displayUser = (userName || '').trim();
       let displayEmail = '';
@@ -1057,13 +918,6 @@ export default function App() {
       const imgMac = await dataOrRead(f.fotoMacEquipDataUri, f.fotoMacEquip);
 
       const yesNo = (v) => (v === 1 || v === true ? 'Sim' : v === 0 || v === false ? 'Não' : '—');
-      const capitalizeWords = (s) => {
-        if (!s) return '';
-        return String(s)
-          .split(/\s+/)
-          .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : ''))
-          .join(' ');
-      };
 
       const html = `<!DOCTYPE html>
       <html>
@@ -1102,7 +956,7 @@ export default function App() {
 
           <div class="card">
             <div class="cardHeader"><div><span class="badge">1</span><span class="cardTitle">Dados do cliente</span></div></div>
-            ${f.nome ? `<div class="row"><span class="label">Nome completo:</span> ${capitalizeWords(f.nome)}</div>` : ''}
+            ${f.nome ? `<div class="row"><span class="label">Nome completo:</span> ${toTitleCase(f.nome)}</div>` : ''}
             ${f.ruaNumero ? `<div class="row"><span class="label">Rua e número:</span> ${f.ruaNumero}</div>` : ''}
             ${f.locClienteLink ? `<div class="row"><span class="label">Localização (link do Maps):</span> <span class="link"><a href="${f.locClienteLink}">${f.locClienteLink}</a></span></div>` : ''}
           </div>
@@ -1379,7 +1233,7 @@ export default function App() {
                 placeholder="Nome"
                 placeholderTextColor="#9aa0b5"
                 value={editFirstName}
-                onChangeText={(t) => setEditFirstName(toTitleCase(t.replace(/[^A-Za-zÀ-ÿ\s'\-]/g, '')))}
+                onChangeText={(t) => setEditFirstName(toTitleCase(sanitizeNameInput(t)))}
                 maxLength={50}
                 autoCapitalize="words"
                 autoCorrect={false}
@@ -1389,7 +1243,7 @@ export default function App() {
                 placeholder="Sobrenome"
                 placeholderTextColor="#9aa0b5"
                 value={editLastName}
-                onChangeText={(t) => setEditLastName(toTitleCase(t.replace(/[^A-Za-zÀ-ÿ\s'\-]/g, '')))}
+                onChangeText={(t) => setEditLastName(toTitleCase(sanitizeNameInput(t)))}
                 maxLength={50}
                 autoCapitalize="words"
                 autoCorrect={false}
@@ -1503,7 +1357,7 @@ export default function App() {
                 <TextInput
                   style={styles.input}
                   value={authFirstName}
-                  onChangeText={(t) => setAuthFirstName(toTitleCase(t.replace(/[^A-Za-zÀ-ÿ\s'\-]/g, '')))}
+                  onChangeText={(t) => setAuthFirstName(toTitleCase(sanitizeNameInput(t)))}
                   maxLength={50}
                   placeholder="Nome"
                   placeholderTextColor="#9aa0b5"
@@ -1513,7 +1367,7 @@ export default function App() {
                 <TextInput
                   style={styles.input}
                   value={authLastName}
-                  onChangeText={(t) => setAuthLastName(toTitleCase(t.replace(/[^A-Za-zÀ-ÿ\s'\-]/g, '')))}
+                  onChangeText={(t) => setAuthLastName(toTitleCase(sanitizeNameInput(t)))}
                   maxLength={50}
                   placeholder="Sobrenome"
                   placeholderTextColor="#9aa0b5"
@@ -1944,7 +1798,7 @@ export default function App() {
               placeholder="Nome completo"
               placeholderTextColor="#9aa0b5"
               value={form.nome}
-              onChangeText={(t) => setField('nome', toTitleCase(t.replace(/[^A-Za-zÀ-ÿ\s'\-]/g, '')))}
+              onChangeText={(t) => setField('nome', toTitleCase(sanitizeNameInput(t)))}
               maxLength={50}
               keyboardType="default"
               autoCapitalize="words"
@@ -2093,7 +1947,7 @@ export default function App() {
               placeholder="Ex.: Amarela, Azul..."
               placeholderTextColor="#9aa0b5"
               value={form.corFibra}
-              onChangeText={(t) => setField('corFibra', toTitleCase(t.replace(/[^A-Za-zÀ-ÿ\s'\-]/g, '')))}
+              onChangeText={(t) => setField('corFibra', toTitleCase(sanitizeNameInput(t)))}
               maxLength={20}
               keyboardType="default"
               autoCapitalize="words"
@@ -2292,6 +2146,13 @@ export default function App() {
               ) : (
                 <Text style={styles.btnText}>{actionLabel}</Text>
               )}
+            </Pressable>
+
+            <Pressable
+              style={[styles.btnSecondary, styles.wFull]}
+              onPress={onExportPdf}
+            >
+              <Text style={styles.btnSecondaryText}>Exportar PDF (form atual)</Text>
             </Pressable>
 
             {(hasChanges && (!currentId || Platform.OS === 'web')) ? (
