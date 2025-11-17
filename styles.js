@@ -1,7 +1,7 @@
 import { StyleSheet, Platform } from 'react-native';
 
 const BANNER_TOP_WEB = 12;
-const BANNER_TOP_MOBILE = 44;
+const BANNER_TOP_MOBILE = 36;
 
 const styles = StyleSheet.create({
   container: {
