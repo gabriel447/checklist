@@ -86,7 +86,7 @@ const PasswordChecklist = ({ value }) => {
   );
   return (
     <View style={styles.passwordChecklistWrap}>
-      <Text style={[styles.label, styles.labelMuted]}>Requisitos da senha:</Text>
+      <Text style={[styles.label, styles.labelMuted, { marginTop: 0 }]}>Requisitos da senha:</Text>
       <Item ok={okLen} text="Pelo menos 12 caracteres" />
       <Item ok={okLower} text="Pelo menos 1 letra minúscula" />
       <Item ok={okUpper} text="Pelo menos 1 letra maiúscula" />
