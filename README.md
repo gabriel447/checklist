@@ -89,8 +89,7 @@ Requer instalação do EAS CLI (`npm i -g eas-cli`) e configuração de contas/s
 
 - `App.js` — UI principal, fluxo do checklist e telas de autenticação
 - `index.js` — registro do componente raiz e Boundary de erro
-- `db.mobile.js` — integração com Supabase no mobile (Auth + tabelas)
-- `db.web.js` — integração com Supabase na web
+- `db.js` — integração unificada com Supabase (web e mobile)
 - `.env.example` — variáveis de ambiente necessárias
 - `app.json` — configurações do projeto (ícones, permissões, web)
 - `assets/` — ícones e splash

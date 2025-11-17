@@ -1,18 +1,35 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
+import { Platform } from 'react-native';
 
 let supabase;
+const normalizeUrl = (raw) => {
+  const t = String(raw || '').trim();
+  return /^https?:\/\//i.test(t) ? t : '';
+};
 const getClient = () => {
-  const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
-  const key = process.env.EXPO_PUBLIC_SUPABASE_KEY;
+  const url = normalizeUrl(process.env.EXPO_PUBLIC_SUPABASE_URL);
+  const key = String(process.env.EXPO_PUBLIC_SUPABASE_KEY || '').trim();
   if (!url || !key) return null;
-  if (!supabase) supabase = createClient(url, key, { auth: { persistSession: true, autoRefreshToken: true } });
+  if (!supabase)
+    supabase = createClient(url, key, {
+      auth: {
+        storage: Platform.OS === 'web' ? undefined : AsyncStorage,
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: false,
+      },
+    });
   return supabase;
 };
 
-export const isSupabaseReady = () =>
-  !!(process.env.EXPO_PUBLIC_SUPABASE_URL && process.env.EXPO_PUBLIC_SUPABASE_KEY);
+export const isSupabaseReady = () => {
+  const url = normalizeUrl(process.env.EXPO_PUBLIC_SUPABASE_URL);
+  const key = String(process.env.EXPO_PUBLIC_SUPABASE_KEY || '').trim();
+  return !!(url && key);
+};
 
-export function initDB() {
+export async function initDB() {
   return Promise.resolve();
 }
 
@@ -39,37 +56,19 @@ export async function setUserId() {
 }
 
 const toIntBool = (v) => (v === true ? 1 : v === false ? 0 : null);
-
-const BUCKET = 'checklists';
-const dataUriToBlob = (dataUri) => {
-  if (!dataUri || typeof dataUri !== 'string') return null;
-  const parts = dataUri.split(',');
-  if (parts.length !== 2) return null;
-  const meta = parts[0];
-  const base64 = parts[1];
-  const contentTypeMatch = /data:(.*);base64/.exec(meta);
-  const contentType = contentTypeMatch ? contentTypeMatch[1] : 'image/jpeg';
-  const binaryString = typeof atob === 'function' ? atob(base64) : Buffer.from(base64, 'base64').toString('binary');
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
-  return new Blob([bytes], { type: contentType });
+const onlyDigits = (s) => String(s || '').replace(/\D+/g, '');
+const formatPhoneBR = (phone) => {
+  const d = onlyDigits(phone);
+  if (!d) return '';
+  const area = d.slice(0, 2);
+  if (d.length >= 11) {
+    return `(${area}) ${d.slice(2, 7)}-${d.slice(7, 11)}`;
+  }
+  if (d.length >= 10) {
+    return `(${area}) ${d.slice(2, 6)}-${d.slice(6, 10)}`;
+  }
+  return `(${area}) ${d.slice(2)}`;
 };
-
-async function uploadDataUri(dataUri, userId, nameHint) {
-  const client = getClient();
-  if (!client || !dataUri || !userId) return null;
-  const blob = dataUriToBlob(dataUri);
-  if (!blob) return null;
-  const ext = blob.type === 'image/png' ? 'png' : 'jpg';
-  const ts = Date.now();
-  const rand = Math.floor(Math.random() * 1e9);
-  const path = `${userId}/${ts}_${rand}_${nameHint}.${ext}`;
-  const { error } = await client.storage.from(BUCKET).upload(path, blob, { contentType: blob.type, upsert: true });
-  if (error) return null;
-  const { data } = client.storage.from(BUCKET).getPublicUrl(path);
-  return data?.publicUrl || null;
-}
 
 export async function listChecklists(userId) {
   const client = getClient();
@@ -234,38 +233,40 @@ export async function getCurrentUser() {
 
 export async function signIn({ email, password }) {
   const client = getClient();
-  if (!client) throw new Error('Supabase não configurado');
+  if (!client) return { user: null, error: 'Supabase não configurado' };
   const { data, error } = await client.auth.signInWithPassword({ email, password });
-  if (error) return null;
+  if (error) {
+    try { console.log('auth:signIn error', error?.message || String(error)); } catch {}
+    return { user: null, error: error.message };
+  }
   const user = data.user || null;
   if (user) {
     try {
       const { data: existing } = await client
         .from('users')
-        .select('id')
+        .select('id,first_name,last_name,phone,cpf')
         .eq('id', user.id)
         .maybeSingle();
-      if (!existing) {
-        const md = user.user_metadata || {};
-        await client
-          .from('users')
-          .upsert({
-            id: user.id,
-            first_name: md.first_name || '',
-            last_name: md.last_name || '',
-            phone: md.phone || '',
-            cpf: md.cpf || '',
-          });
-      }
+      const md = user.user_metadata || {};
+      const payload = {
+        id: user.id,
+        first_name: (md.first_name ?? existing?.first_name ?? '') || '',
+        last_name: (md.last_name ?? existing?.last_name ?? '') || '',
+        phone: formatPhoneBR(md.phone ?? existing?.phone ?? ''),
+        cpf: onlyDigits(md.cpf ?? existing?.cpf ?? '') || null,
+      };
+      await client.from('users').upsert(payload);
     } catch {}
   }
-  return user;
+  return { user };
 }
 
 export async function signUp({ email, password, firstName, lastName, phone, cpf }) {
   const client = getClient();
   if (!client) return { user: null, session: null, error: 'Supabase não configurado' };
-  const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/login` : undefined;
+  const cpfDigits = onlyDigits(cpf);
+  const phoneFmt = formatPhoneBR(phone);
+  const redirectTo = Platform.OS === 'web' && typeof window !== 'undefined' ? `${window.location.origin}/login` : undefined;
   const { data, error } = await client.auth.signUp({
     email,
     password,
@@ -274,8 +275,8 @@ export async function signUp({ email, password, firstName, lastName, phone, cpf 
       data: {
         first_name: firstName || null,
         last_name: lastName || null,
-        phone: phone || null,
-        cpf: cpf || null,
+        phone: phoneFmt || null,
+        cpf: cpfDigits || null,
         display_name: `${(firstName || '').trim()} ${(lastName || '').trim()}`.trim() || null,
       },
     },
@@ -303,8 +304,8 @@ export async function signUp({ email, password, firstName, lastName, phone, cpf 
           id: userId,
           first_name: firstName || '',
           last_name: lastName || '',
-          phone: phone || '',
-          cpf: cpf || '',
+          phone: phoneFmt || '',
+          cpf: cpfDigits || null,
         });
       if (upErr) return { user: data?.user || null, session, error: upErr.message };
     } catch (e) {
@@ -331,8 +332,8 @@ export async function updateProfile(userId, { firstName, lastName, phone, cpf })
       id: userId,
       first_name: firstName ?? '',
       last_name: lastName ?? '',
-      phone: phone ?? '',
-      cpf: cpf ?? null,
+      phone: formatPhoneBR(phone ?? ''),
+      cpf: onlyDigits(cpf ?? '') || null,
     });
   if (error) throw new Error(error.message);
   return true;
@@ -341,14 +342,16 @@ export async function updateProfile(userId, { firstName, lastName, phone, cpf })
 export async function updateAuth({ email, password, firstName, lastName, phone, cpf }) {
   const client = getClient();
   if (!client) throw new Error('Supabase não configurado');
+  const cpfDigits = onlyDigits(cpf);
+  const phoneFmt = formatPhoneBR(phone);
   const data = {
     ...(email ? { email } : {}),
     ...(password ? { password } : {}),
     data: {
       ...(firstName ? { first_name: firstName } : {}),
       ...(lastName ? { last_name: lastName } : {}),
-      ...(phone ? { phone } : {}),
-      ...(cpf ? { cpf } : {}),
+      ...(phoneFmt ? { phone: phoneFmt } : {}),
+      ...(cpfDigits ? { cpf: cpfDigits } : {}),
       display_name: `${(firstName || '').trim()} ${(lastName || '').trim()}`.trim() || null,
     },
   };

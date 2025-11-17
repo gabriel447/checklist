@@ -42,7 +42,7 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
     updateAuth,
     findUserByCpf,
     onAuthStateChange,
-  } from './db.mobile';
+  } from './db';
 
 const makeInitialForm = () => ({
   nome: '',
