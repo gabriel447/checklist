@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   rowReset: {
-    marginTop: 8,
+    marginTop: 4,
     marginBottom: 8,
   },
   rowSpaceBetween: {
@@ -402,7 +402,7 @@ const styles = StyleSheet.create({
   authActions: {
     flexDirection: 'column',
     gap: 1,
-    marginTop: 8,
+    marginTop: 4,
   },
   bannerBoxSuccess: {
     backgroundColor: '#e6f6ea',
@@ -524,7 +524,7 @@ const styles = StyleSheet.create({
   envWarn: { color: '#f5c518' },
 
   // Password checklist
-  passwordChecklistWrap: { marginBottom: 20 },
+  passwordChecklistWrap: { marginBottom: 8 },
   mb6: { marginBottom: 6 },
   checkItemTextOk: { fontSize: 12, color: '#16a34a' },
   checkItemTextError: { fontSize: 12, color: '#b91c1c' },
