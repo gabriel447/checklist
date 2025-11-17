@@ -2221,12 +2221,14 @@ export default function App() {
               )}
             </Pressable>
 
-            <Pressable
-              style={[styles.btnSecondary, styles.wFull]}
-              onPress={onExportPdf}
-            >
-              <Text style={styles.btnSecondaryText}>Exportar PDF (form atual)</Text>
-            </Pressable>
+            {currentId ? (
+              <Pressable
+                style={[styles.btnSecondary, styles.wFull]}
+                onPress={onExportPdf}
+              >
+                <Text style={styles.btnSecondaryText}>Exportar PDF</Text>
+              </Pressable>
+            ) : null}
 
             {(hasChanges && (!currentId || Platform.OS === 'web')) ? (
               <Pressable
