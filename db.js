@@ -347,6 +347,36 @@ export async function updateAuth({ email, password, firstName, lastName, phone, 
   return true;
 }
 
+export async function requestResetCode(email) {
+  const client = getClient();
+  if (!client) throw new Error('Supabase não configurado');
+  const { data, error } = await client.functions.invoke('reset-code-send', { body: { email: String(email || '').trim().toLowerCase() } });
+  if (error) throw new Error(error.message || 'Falha ao enviar código');
+  const parsed = typeof data === 'string' ? (() => { try { return JSON.parse(data); } catch { return null; } })() : data;
+  return parsed || { ok: true };
+}
+
+export async function verifyResetCode(email, code) {
+  const client = getClient();
+  if (!client) throw new Error('Supabase não configurado');
+  const { data, error } = await client.functions.invoke('reset-code-verify', { body: { email: String(email || '').trim().toLowerCase(), code } });
+  if (error) throw new Error(error.message || 'Código inválido');
+  const parsed = typeof data === 'string' ? (() => { try { return JSON.parse(data); } catch { return null; } })() : data;
+  if (parsed && typeof parsed === 'object') return parsed;
+  if (parsed === true) return { valid: true };
+  if (parsed === false) return { valid: false };
+  return { valid: !!(data && data.valid) };
+}
+
+export async function applyResetPassword(email, code, newPassword) {
+  const client = getClient();
+  if (!client) throw new Error('Supabase não configurado');
+  const { data, error } = await client.functions.invoke('reset-password-apply', { body: { email: String(email || '').trim().toLowerCase(), code, newPassword } });
+  if (error) throw new Error(error.message || 'Falha ao atualizar senha');
+  const parsed = typeof data === 'string' ? (() => { try { return JSON.parse(data); } catch { return null; } })() : data;
+  return parsed || { ok: true };
+}
+
 export async function getProfile(userId) {
   const client = getClient();
   if (!client) return null;

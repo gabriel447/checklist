@@ -42,6 +42,9 @@ import { isStrongPassword, isValidEmail, formatPhoneBR, formatCpfBR, toTitleCase
     updateAuth,
     findUserByCpf,
     onAuthStateChange,
+    requestResetCode,
+    verifyResetCode,
+    applyResetPassword,
   } from './db';
 import styles from './styles';
 
@@ -189,6 +192,7 @@ export default function App() {
   const locClienteRef = useRef(null);
   const locCtoRef = useRef(null);
   const locCasaRef = useRef(null);
+  
 
   const clearAuthFields = () => {
     setAuthEmail('');
@@ -198,6 +202,10 @@ export default function App() {
     setAuthPhone('');
     setAuthCpf('');
     setErrorMessage(null);
+    setResetCode('');
+    setHasSentCode(false);
+    setVerifiedResetEmail(null);
+    setVerifiedResetCode(null);
   };
 
   const onLogout = async () => {
@@ -412,6 +420,11 @@ export default function App() {
     const rows = await listChecklists(userId);
     setList(rows);
   };
+
+  const [resetCode, setResetCode] = useState('');
+  const [hasSentCode, setHasSentCode] = useState(false);
+  const [verifiedResetEmail, setVerifiedResetEmail] = useState(null);
+  const [verifiedResetCode, setVerifiedResetCode] = useState(null);
 
   const compressDataUri = async (dataUri, maxW = 1024, maxH = 1024, quality = 0.45) => {
     try {
@@ -1394,17 +1407,19 @@ export default function App() {
                 />
               </>
             ) : null}
-            <TextInput
-              style={styles.input}
-              value={authEmail}
-              onChangeText={setAuthEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              placeholder="E-mail"
-              placeholderTextColor="#9aa0b5"
-              autoComplete="off"
-              textContentType="none"
-            />
+            {!(authMode === 'update_password' || (authMode === 'reset' && hasSentCode)) ? (
+              <TextInput
+                style={styles.input}
+                value={authEmail}
+                onChangeText={setAuthEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                placeholder="E-mail"
+                placeholderTextColor="#9aa0b5"
+                autoComplete="off"
+                textContentType="none"
+              />
+            ) : null}
             {authMode === 'register' ? (
               <>
                 <View style={styles.inputWrapper}>
@@ -1473,16 +1488,20 @@ export default function App() {
                   </Pressable>
                 </View>
                 <PasswordChecklist value={authPassword} />
-                <TextInput
-                  style={styles.input}
-                  value={authPasswordConfirm}
-                  onChangeText={setAuthPasswordConfirm}
-                  secureTextEntry
-                  placeholder="Confirmar nova senha"
-                  placeholderTextColor="#9aa0b5"
-                  autoComplete="off"
-                  textContentType="none"
-                />
+              </>
+            ) : authMode === 'reset' ? (
+              <>
+                {hasSentCode ? (
+                    <TextInput
+                      style={styles.input}
+                      value={resetCode}
+                      onChangeText={setResetCode}
+                      keyboardType="number-pad"
+                      maxLength={6}
+                      placeholder="Código recebido por e‑mail"
+                      placeholderTextColor="#9aa0b5"
+                    />
+                ) : null}
               </>
             ) : null}
             {authMode === 'login' ? (
@@ -1510,8 +1529,8 @@ export default function App() {
               const cpfDigitsInline = (authCpf || '').replace(/\D+/g, '');
               const loginReady = isValidEmail(email) && (authPassword || '').length >= 12;
               const registerReady = isValidEmail(email) && isStrongPassword(authPassword) && phoneDigits.length >= 10 && phoneDigits.length <= 11 && !!authFirstName && !!authLastName && cpfDigitsInline.length === 11;
-              const resetReady = isValidEmail(email);
-              const updateReady = isStrongPassword(authPassword) && authPasswordConfirm === authPassword;
+              const resetReady = hasSentCode ? (isValidEmail(authEmail) && (resetCode || '').replace(/\D+/g, '').length === 6) : isValidEmail(authEmail);
+              const updateReady = isStrongPassword(authPassword);
               return (
             <View style={styles.authActions}>
             <View style={[styles.row, authMode === 'reset' ? styles.rowReset : null]}>
@@ -1564,47 +1583,101 @@ export default function App() {
                   )}
                 </Pressable>
               ) : authMode === 'reset' ? (
-                <Pressable style={[styles.btn, (!resetReady || isAuthSubmitting) && styles.btnDisabled, styles.flex1]} disabled={!resetReady || isAuthSubmitting} onPress={async () => {
-                  const em = (authEmail || '').trim();
-                  if (!isValidEmail(em)) {
-                    setBannerType('warn');
-                    setSaveModalMessage('Informe um e‑mail válido.');
-                    setSaveModalVisible(true);
-                    return;
-                  }
-                  setIsAuthSubmitting(true);
-                  try {
-                    setBannerType('success');
-                    setSaveModalMessage('Se existir, enviaremos as instruções para redefinição no seu e-mail.');
-                    setSaveModalVisible(true);
-                    if (Platform.OS === 'web') {
-                      window.history.pushState({}, '', '/login');
-                      setRoute('/login');
+                hasSentCode ? (
+                  <Pressable style={[styles.btn, (!resetReady || isAuthSubmitting) && styles.btnDisabled, styles.flex1]} disabled={!resetReady || isAuthSubmitting} onPress={async () => {
+                    const em = (authEmail || '').trim();
+                    const cd = (resetCode || '').replace(/\D+/g, '');
+                    if (!isValidEmail(em) || cd.length !== 6) {
+                      setBannerType('warn');
+                      setSaveModalMessage('Informe e‑mail e código válidos.');
+                      setSaveModalVisible(true);
+                      return;
                     }
-                    setAuthMode('login');
-                    setMode('auth');
-                  } catch (e) {
-                    setBannerType('error');
-                    setSaveModalMessage('Tente novamente mais tarde.');
-                    setSaveModalVisible(true);
-                  } finally { setIsAuthSubmitting(false); }
-                }}>
-                  {isAuthSubmitting ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={styles.btnText}>Enviar</Text>
-                  )}
-                </Pressable>
+                    setIsAuthSubmitting(true);
+                    try {
+                      const res = await verifyResetCode(em, cd);
+                      const isOk = res === true || (res && (res.valid === true || res.valid === 'true'));
+                      if (!isOk) {
+                        const reason = res?.reason;
+                        setBannerType('error');
+                        setSaveModalMessage(reason === 'expired' ? 'Código expirado.' : reason === 'used' ? 'Código já usado.' : 'Código inválido.');
+                        setSaveModalVisible(true);
+                        return;
+                      }
+                      setVerifiedResetEmail(em);
+                      setVerifiedResetCode(cd);
+                      if (Platform.OS === 'web') {
+                        window.history.pushState({}, '', '/alterar-senha');
+                        setRoute('/alterar-senha');
+                      }
+                      setAuthMode('update_password');
+                      setMode('auth');
+                      setBannerType('success');
+                      setSaveModalMessage('Código confirmado. Defina a nova senha.');
+                      setSaveModalVisible(true);
+                    } catch (e) {
+                      console.error('Confirmar código: error', e);
+                      setBannerType('error');
+                      setSaveModalMessage(e?.message || 'Código inválido.');
+                      setSaveModalVisible(true);
+                    } finally { setIsAuthSubmitting(false); }
+                  }}>
+                    {isAuthSubmitting ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.btnText}>Confirmar código</Text>
+                    )}
+                  </Pressable>
+                ) : (
+                  <Pressable style={[styles.btn, (!resetReady || isAuthSubmitting) && styles.btnDisabled, styles.flex1]} disabled={!resetReady || isAuthSubmitting} onPress={async () => {
+                    const em = (authEmail || '').trim();
+                    if (!isValidEmail(em)) {
+                      setBannerType('warn');
+                      setSaveModalMessage('Informe um e‑mail válido.');
+                      setSaveModalVisible(true);
+                      return;
+                    }
+                    setIsAuthSubmitting(true);
+                    try {
+                      await requestResetCode(em);
+                      setHasSentCode(true);
+                      setBannerType('success');
+                      setSaveModalMessage('Código enviado. Confira seu e‑mail.');
+                      setSaveModalVisible(true);
+                    } catch (e) {
+                      setBannerType('error');
+                      setSaveModalMessage(e?.message || 'Tente novamente mais tarde.');
+                      setSaveModalVisible(true);
+                    } finally { setIsAuthSubmitting(false); }
+                  }}>
+                    {isAuthSubmitting ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.btnText}>Enviar código</Text>
+                    )}
+                  </Pressable>
+                )
               ) : authMode === 'update_password' ? (
                 <Pressable style={[styles.btn, (!updateReady || isAuthSubmitting) && styles.btnDisabled, styles.flex1]} disabled={!updateReady || isAuthSubmitting} onPress={async () => {
                   setIsAuthSubmitting(true);
                   try {
-                    await updateAuth({ password: authPassword });
+                    if (verifiedResetEmail && verifiedResetCode) {
+                      await applyResetPassword(verifiedResetEmail, verifiedResetCode, authPassword);
+                    } else {
+                      await updateAuth({ password: authPassword });
+                    }
                     setBannerType('success');
                     setSaveModalMessage('Senha atualizada com sucesso.');
                     setSaveModalVisible(true);
-                    setAuthPassword('');
+                    const emailForLogin = verifiedResetEmail || (authEmail || '').trim();
+                    if (emailForLogin) setAuthEmail(emailForLogin);
+                    setAuthPassword(authPassword);
+                    setShowAuthPassword(false);
                     setAuthPasswordConfirm('');
+                    setResetCode('');
+                    setHasSentCode(false);
+                    setVerifiedResetEmail(null);
+                    setVerifiedResetCode(null);
                     if (Platform.OS === 'web') {
                       window.history.pushState({}, '', '/login');
                       setRoute('/login');
