@@ -1775,12 +1775,6 @@ export default function App() {
                 <Pressable style={[styles.btn, (!updateReady || isAuthSubmitting) && styles.btnDisabled, { flex: 1 }]} disabled={!updateReady || isAuthSubmitting} onPress={async () => {
                   setIsAuthSubmitting(true);
                   try {
-                    if (!isStrongPassword(authPassword) || authPasswordConfirm !== authPassword) {
-                      setBannerType('warn');
-                      setSaveModalMessage('Verifique os requisitos e a confirmação da senha.');
-                      setSaveModalVisible(true);
-                      return;
-                    }
                     await updateAuth({ password: authPassword });
                     setBannerType('success');
                     setSaveModalMessage('Senha atualizada com sucesso.');
@@ -1821,12 +1815,6 @@ export default function App() {
                     if (!isValidEmail(email)) {
                       setBannerType('warn');
                       setSaveModalMessage('E‑mail inválido.');
-                      setSaveModalVisible(true);
-                      return;
-                    }
-                    if (!isStrongPassword(authPassword)) {
-                      setBannerType('warn');
-                      setSaveModalMessage('A senha precisa ter 12+ caracteres, letra maiúscula, número e caractere especial.');
                       setSaveModalVisible(true);
                       return;
                     }
@@ -2397,6 +2385,8 @@ export default function App() {
   );
 }
 
+const BANNER_TOP_WEB = 12;
+const BANNER_TOP_MOBILE = 44;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -2780,8 +2770,7 @@ const styles = StyleSheet.create({
   },
   bannerWrap: {
     position: 'absolute',
-    //posicao do banner no topo da tela
-    top: Platform.OS === 'web' ? 12 : 44,
+    top: Platform.OS === 'web' ? BANNER_TOP_WEB : BANNER_TOP_MOBILE,
     left: 0,
     right: 0,
     zIndex: 1000,
